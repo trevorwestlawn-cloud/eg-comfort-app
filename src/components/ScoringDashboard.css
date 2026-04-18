@@ -1,0 +1,186 @@
+.scoring-container {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.scoring-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.score-card {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.score-header {
+  margin-bottom: 2rem;
+}
+
+.score-header h2 {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.year-built {
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.score-display {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.score-number {
+  font-size: 4rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.score-label {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.score-description {
+  color: #555;
+  line-height: 1.6;
+}
+
+.dashboard-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.dashboard-card {
+  background: white;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-card h3 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #333;
+}
+
+.issues-list,
+.recommendations-list {
+  list-style: none;
+  padding: 0;
+}
+
+.issues-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.issues-list li:last-child {
+  border-bottom: none;
+}
+
+.issue-icon {
+  flex-shrink: 0;
+  font-size: 1.2rem;
+}
+
+.no-issues {
+  color: #27D17F;
+  font-weight: 500;
+}
+
+.recommendations-list li {
+  padding: 1rem 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+
+.recommendations-list li:last-child {
+  border-bottom: none;
+}
+
+.recommendations-list strong {
+  color: #333;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+.recommendations-list p {
+  color: #666;
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.waste-description {
+  color: #666;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.waste-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+  background: #f9fafb;
+  border-radius: 6px;
+  border-left: 4px solid #0066cc;
+}
+
+.metric-label {
+  font-size: 0.85rem;
+  color: #666;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.metric-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0066cc;
+}
+
+.scoring-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+@media (max-width: 768px) {
+  .score-display {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+
+  .score-number {
+    font-size: 3rem;
+  }
+
+  .dashboard-row {
+    grid-template-columns: 1fr;
+  }
+
+  .scoring-actions {
+    flex-direction: column-reverse;
+  }
+}
