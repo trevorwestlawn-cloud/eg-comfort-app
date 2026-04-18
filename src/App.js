@@ -2022,18 +2022,28 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                 <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.35)", marginTop: 3 }}>per month</div>
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-              <div>
+            <div style={{ paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+              <div style={{ marginBottom: 14 }}>
                 <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 4 }}>Score Improvement</div>
                 <div style={{ fontFamily: T.sans, fontSize: 20, fontWeight: 700, color: "#FFFFFF" }}>
                   {dual.scoreLow > 0 ? "+" + dual.scoreLow + " to +" + dual.scoreHigh + " pts" : "--"}
                 </div>
               </div>
               <div>
-                <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 4 }}>Estimated Payback</div>
-                <div style={{ fontFamily: T.sans, fontSize: 20, fontWeight: 700, color: "#FFFFFF" }}>
-                  {dual.paybackLow ? dual.paybackLow + " -- " + dual.paybackHigh + " yrs" : "--"}
-                </div>
+                <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 8 }}>Estimated Payback (savings applied to investment)</div>
+                {dual.pkgCost > 0 && getCombinedBill(homeProfile) > 0
+                  ? calculateSavingsScenarios(getCombinedBill(homeProfile)).map(function(s) {
+                      var mo = payoffMonths(dual.pkgCost, s.mo);
+                      var yr = payoffYears(mo);
+                      return (
+                        <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontFamily: T.sans, fontSize: 14, color: "#FFFFFF" }}>
+                          <span style={{ color: "rgba(255,255,255,0.7)" }}>{s.label} ({s.pct}) — {fmtD(s.mo)}/mo</span>
+                          <span style={{ fontWeight: 700, color: "#27D17F" }}>{yr} yrs</span>
+                        </div>
+                      );
+                    })
+                  : <div style={{ fontFamily: T.sans, fontSize: 14, color: "rgba(255,255,255,0.5)" }}>Enter bills above to estimate payback</div>
+                }
               </div>
             </div>
           </div>
@@ -2120,11 +2130,18 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                   )}
                 </div>
 
-                {pkgDual.paybackLow && (
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted }}>
-                    Score: +{pkgDual.scoreLow} to +{pkgDual.scoreHigh} pts &nbsp;|&nbsp; Payback: {pkgDual.paybackLow} -- {pkgDual.paybackHigh} yrs &nbsp;|&nbsp; Illustrative only
-                  </div>
-                )}
+                {(function() {
+                  var monthly = getCombinedBill(homeProfile);
+                  if (!(monthly > 0) || !(pkg.price > 0)) return null;
+                  var moderate = calculateSavingsScenarios(monthly)[1]; // 25%
+                  var mo = payoffMonths(pkg.price, moderate.mo);
+                  var yr = payoffYears(mo);
+                  return (
+                    <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted }}>
+                      Score: +{pkgDual.scoreLow} to +{pkgDual.scoreHigh} pts &nbsp;|&nbsp; Payoff at 25% savings: ~{yr} yrs &nbsp;|&nbsp; Illustrative only
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -3229,16 +3246,20 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
               </div>
             </div>
 
-            {/* Payback */}
-            {proj.paybackLow && (
+            {/* Payback -- 3 scenarios using financing-screen math */}
+            {bill > 0 && result.totalPaid > 0 && (
               <div style={{ paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-                <div style={{ fontFamily: T.sans, fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>Estimated Payback Period</div>
-                <div style={{ fontFamily: T.sans, fontSize: 20, fontWeight: 700, color: "#27D17F" }}>
-                  {proj.paybackLow} – {proj.paybackHigh} years
-                </div>
-                <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.4)", marginTop: 2 }}>
-                  Based on {fmt(proj.pkgPrice)} investment and estimated {fmt(proj.savingsLow)}–{fmt(proj.savingsHigh)}/yr savings
-                </div>
+                <div style={{ fontFamily: T.sans, fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>Estimated Payoff (savings applied to total cost of {fmt(result.totalPaid)})</div>
+                {sv.map(function(s) {
+                  var mo = payoffMonths(result.totalPaid, s.mo);
+                  var yr = payoffYears(mo);
+                  return (
+                    <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontFamily: T.sans, fontSize: 14, color: "#FFFFFF" }}>
+                      <span style={{ color: "rgba(255,255,255,0.7)" }}>{s.label} ({s.pct}) — {fmtD(s.mo)}/mo saved</span>
+                      <span style={{ fontWeight: 700, color: "#27D17F" }}>{yr} yrs</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -3277,13 +3298,6 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
           return <div key={r.label} style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontFamily: T.sans, fontSize: 14 }}><span style={{ color: T.muted }}>{r.label}</span><span style={{ fontWeight: r.bold ? 700 : 400, color: r.green ? T.accent : T.dark }}>{r.val}</span></div>;
         })}
       </div>
-
-      {mo25 !== null && (
-        <Card style={{ background: T.accentLight, border: "1px solid " + T.accent + "44", marginBottom: 16 }}>
-          <div style={{ fontFamily: T.sans, fontSize: 11, color: T.accent, textTransform: "uppercase", letterSpacing: "0.07em", fontWeight: 700, marginBottom: 5 }}>Payoff Illustration</div>
-          <div style={{ fontFamily: T.sans, fontSize: 14, color: T.textSec, lineHeight: 1.6 }}>At 25% savings: ~{mo25} mo ({yr25} yrs to offset) -- illustrative only</div>
-        </Card>
-      )}
 
       <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
         <button style={{ flex: 1, padding: "17px", background: T.grad, border: "none", borderRadius: T.radiusSm, fontFamily: T.sans, fontSize: 15, fontWeight: 700, color: T.white, cursor: "pointer", boxShadow: "0 5px 18px rgba(39,209,127,0.28)" }}>Move Forward</button>
