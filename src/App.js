@@ -398,10 +398,10 @@ function calculateEfficiencyScore(inputs) {
 }
 
 function getEfficiencyBand(score) {
-  if (score >= 85) return { label: "High Efficiency",  color: "#27D17F", bg: "rgba(39,209,127,0.10)",  wasteLow: 0.05, wasteHigh: 0.10 };
-  if (score >= 70) return { label: "Moderate",         color: "#F5A623", bg: "rgba(245,166,35,0.10)",  wasteLow: 0.10, wasteHigh: 0.20 };
-  if (score >= 50) return { label: "Low Efficiency",   color: "#2F80ED", bg: "rgba(47,128,237,0.10)",  wasteLow: 0.20, wasteHigh: 0.35 };
-  return               { label: "Major Loss",          color: "#E05252", bg: "rgba(224,82,82,0.10)",   wasteLow: 0.35, wasteHigh: 0.50 };
+  if (score >= 85) return { label: "High Efficiency",  color: "#27D17F", bg: "rgba(39,209,127,0.10)",  wasteLow: 0.05, wasteHigh: 0.12 };
+  if (score >= 70) return { label: "Moderate",         color: "#F5A623", bg: "rgba(245,166,35,0.10)",  wasteLow: 0.12, wasteHigh: 0.22 };
+  if (score >= 50) return { label: "Low Efficiency",   color: "#2F80ED", bg: "rgba(47,128,237,0.10)",  wasteLow: 0.22, wasteHigh: 0.40 };
+  return               { label: "Major Loss",          color: "#E05252", bg: "rgba(224,82,82,0.10)",   wasteLow: 0.40, wasteHigh: 0.55 };
 }
 
 // Waste calculation anchored to actual annual bill spend.
@@ -453,16 +453,21 @@ function getRecommendations(inputs) {
 // Upgrade impact catalog
 // savingsLow/High = % of HVAC-related annual spend
 // scoreLow/High   = points added to efficiency score
+//
+// Recalibrated against real EG Comfort customer data: 3,700 sqft TX
+// home with pool that received sealing + smart thermostat + sensors +
+// plenum upgrade + variable-speed pool pump achieved ~45-55% reduction
+// of HVAC-related annual spend (electric + gas combined).
 var UPGRADE_IMPACTS = {
-  ductSealing:       { savingsLow: 0.08, savingsHigh: 0.20, scoreLow: 6,  scoreHigh: 15, label: "Duct Sealing / Airflow Correction" },
-  smartThermostat:   { savingsLow: 0.03, savingsHigh: 0.08, scoreLow: 3,  scoreHigh: 6,  label: "Smart Thermostat" },
-  roomSensors:       { savingsLow: 0.02, savingsHigh: 0.06, scoreLow: 2,  scoreHigh: 5,  label: "Room Sensors" },
-  filterUpgrade:     { savingsLow: 0.01, savingsHigh: 0.04, scoreLow: 1,  scoreHigh: 3,  label: "Filter / Plenum Upgrade" },
+  ductSealing:       { savingsLow: 0.12, savingsHigh: 0.25, scoreLow: 6,  scoreHigh: 15, label: "Duct Sealing / Airflow Correction" },
+  smartThermostat:   { savingsLow: 0.04, savingsHigh: 0.10, scoreLow: 3,  scoreHigh: 6,  label: "Smart Thermostat" },
+  roomSensors:       { savingsLow: 0.03, savingsHigh: 0.07, scoreLow: 2,  scoreHigh: 5,  label: "Room Sensors" },
+  filterUpgrade:     { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1,  scoreHigh: 3,  label: "Filter / Plenum Upgrade" },
   energyMonitor:     { savingsLow: 0.01, savingsHigh: 0.05, scoreLow: 1,  scoreHigh: 4,  label: "Energy Monitor" },
-  bootSealing:       { savingsLow: 0.02, savingsHigh: 0.06, scoreLow: 2,  scoreHigh: 5,  label: "Boot Sealing" },
-  ductCleaning:      { savingsLow: 0.01, savingsHigh: 0.04, scoreLow: 1,  scoreHigh: 3,  label: "Duct Cleaning" },
-  poolPump:          { savingsLow: 0.03, savingsHigh: 0.10, scoreLow: 2,  scoreHigh: 6,  label: "Variable-Speed Pool Pump" },
-  hvacReplacement:   { savingsLow: 0.15, savingsHigh: 0.30, scoreLow: 12, scoreHigh: 22, label: "New HVAC System(s)" },
+  bootSealing:       { savingsLow: 0.03, savingsHigh: 0.08, scoreLow: 2,  scoreHigh: 5,  label: "Boot Sealing" },
+  ductCleaning:      { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1,  scoreHigh: 3,  label: "Duct Cleaning" },
+  poolPump:          { savingsLow: 0.05, savingsHigh: 0.13, scoreLow: 2,  scoreHigh: 6,  label: "Variable-Speed Pool Pump" },
+  hvacReplacement:   { savingsLow: 0.20, savingsHigh: 0.35, scoreLow: 12, scoreHigh: 22, label: "New HVAC System(s)" },
 };
 
 // Map package/addon IDs to upgrade impact keys
@@ -493,12 +498,16 @@ function getUpgradesForSelection(packageId, addons) {
   return upgrades;
 }
 
-// HVAC share of total bill (35-55% depending on home conditions)
+// HVAC share of total bill (50-65% depending on home conditions).
+// Calibrated for Texas where AC dominates summer and heating runs
+// hard in winter -- HVAC routinely accounts for over half of total
+// utility spend in single-family homes here.
 function getHvacShare(scoreInputs) {
-  var base = 0.45;
-  if (scoreInputs.runtime === "neverOff") base = 0.55;
-  if (scoreInputs.airflow === "veryWeak") base = Math.min(0.55, base + 0.05);
-  if (scoreInputs.comfort === "major")    base = Math.min(0.55, base + 0.03);
+  var base = 0.50;
+  if (scoreInputs.runtime === "neverOff") base = 0.65;
+  if (scoreInputs.runtime === "long")     base = 0.58;
+  if (scoreInputs.airflow === "veryWeak") base = Math.min(0.65, base + 0.05);
+  if (scoreInputs.comfort === "major")    base = Math.min(0.65, base + 0.03);
   return base;
 }
 
@@ -558,17 +567,18 @@ function calculateSavingsProjection(score, homeProfile, scoreInputs, packageId, 
     if (!u) return;
 
     var multiplier = 1.0;
-    // Apply diminishing returns within groups
+    // Apply diminishing returns within groups (less aggressive --
+    // real-world data shows stacked upgrades retain more value)
     if (controlGroup.indexOf(uid) > -1) {
       controlCount++;
-      if (controlCount === 2) multiplier = 0.6;
-      if (controlCount >= 3) multiplier = 0.35;
+      if (controlCount === 2) multiplier = 0.7;
+      if (controlCount >= 3) multiplier = 0.5;
     }
     if (airflowGroup.indexOf(uid) > -1) {
       airflowCount++;
-      if (airflowCount === 2) multiplier = 0.65;
-      if (airflowCount === 3) multiplier = 0.40;
-      if (airflowCount >= 4)  multiplier = 0.25;
+      if (airflowCount === 2) multiplier = 0.75;
+      if (airflowCount === 3) multiplier = 0.55;
+      if (airflowCount >= 4)  multiplier = 0.35;
     }
 
     var sl = hvacAnnual * u.savingsLow  * multiplier;
@@ -710,12 +720,12 @@ function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId,
     var us = UPGRADE_UTILITY_SPLIT[uid] || { e: 0.5, g: 0.5 };
     if (!u) return;
     var mult = 1.0;
-    if (controlGroup.indexOf(uid) > -1) { controlCount++; if (controlCount === 2) mult = 0.6; }
+    if (controlGroup.indexOf(uid) > -1) { controlCount++; if (controlCount === 2) mult = 0.7; if (controlCount >= 3) mult = 0.5; }
     if (airflowGroup.indexOf(uid) > -1) {
       airflowCount++;
-      if (airflowCount === 2) mult = 0.65;
-      if (airflowCount === 3) mult = 0.40;
-      if (airflowCount >= 4)  mult = 0.25;
+      if (airflowCount === 2) mult = 0.75;
+      if (airflowCount === 3) mult = 0.55;
+      if (airflowCount >= 4)  mult = 0.35;
     }
     var hvacTotal = hvacElec + hvacGas;
     var sl = hvacTotal * u.savingsLow  * mult;
@@ -901,34 +911,48 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
     });
   }
 
-  // 6. New HVAC System(s) -- highest-impact upgrade for older equipment
+  // 6. New HVAC System(s) -- highest-impact but also highest-cost upgrade.
+  // Recommended only when there are strong signals (aging equipment +
+  // performance issues), since the investment is significant.
   var hvacWeight = 0;
-  if (si.hvacAge === "10plus")    hvacWeight += 5;
-  if (si.hvacAge === "5to10")     hvacWeight += 1;
+  if (si.hvacAge === "10plus")    hvacWeight += 4;
   if (si.runtime === "neverOff")  hvacWeight += 2;
   if (si.runtime === "long")      hvacWeight += 1;
   if (si.bills === "much")        hvacWeight += 2;
-  if (si.bills === "slightly")    hvacWeight += 1;
   if (si.comfort === "major")     hvacWeight += 1;
-  if (hvacWeight >= 3) {
-    var hconf = hvacWeight >= 7 ? "Strong Match" : hvacWeight >= 5 ? "Likely Helpful" : "Optional";
+  // Higher threshold than other recs -- only surface when the case is real
+  if (hvacWeight >= 5) {
+    var hconf = hvacWeight >= 9 ? "Strong Match" : hvacWeight >= 7 ? "Likely Helpful" : "Consider";
     var hvacWhy;
-    if (si.hvacAge === "10plus") {
-      hvacWhy = "HVAC equipment over 10 years old typically operates at 60-75% of the efficiency of modern systems. Replacement is the single highest-impact upgrade available and often qualifies for utility rebates and federal tax credits.";
-    } else if (si.runtime === "neverOff") {
-      hvacWhy = "When equipment runs almost continuously, it is often a sign the system is undersized, failing, or no longer matching the home's load. Newer right-sized equipment can dramatically reduce runtime.";
+    if (si.hvacAge === "10plus" && (si.runtime === "neverOff" || si.bills === "much")) {
+      hvacWhy = "Equipment over 10 years old combined with the performance signals reported here suggests replacement may be more cost-effective than continuing to operate aging units. Often qualifies for utility rebates and federal tax credits that can offset 10-30% of the cost.";
+    } else if (si.hvacAge === "10plus") {
+      hvacWhy = "HVAC equipment over 10 years old typically operates at 60-75% of the efficiency of modern systems. Worth pricing out if you're planning major upgrades anyway -- often qualifies for utility rebates and federal tax credits.";
     } else {
-      hvacWhy = "Combined with sealing and balancing, modern high-efficiency equipment delivers the largest single improvement in comfort and energy use available.";
+      hvacWhy = "Worth pricing out if other improvements alone do not deliver enough relief. Should be considered alongside, not instead of, sealing and control upgrades, which have much faster paybacks.";
     }
     recs.push({
-      id: "hvacReplacement", priority: 0, confidence: hconf, weight: hvacWeight + 5, // boost above other recs
+      id: "hvacReplacement", priority: 6, confidence: hconf, weight: hvacWeight,
       name: "New HVAC System(s)",
       what: "Replace aging HVAC equipment with modern high-efficiency systems (SEER 16-22) that use 30-50% less energy.",
       why: hvacWhy,
       impact: { comfort: "High", control: "Moderate", electric: "High", gas: "High" },
-      detail: "Modern equipment carries SEER ratings of 16-22 vs 8-12 for systems 10+ years old. Combined with proper duct sealing and balancing, this delivers the largest single improvement in both comfort and energy use available -- typically 15-30% reduction in HVAC-related energy spend.",
+      detail: "Modern equipment carries SEER ratings of 16-22 vs 8-12 for systems 10+ years old. Combined with proper duct sealing, this delivers the largest single improvement available -- typically 20-35% reduction in HVAC-related energy spend. However, the upfront cost is significantly higher than other improvements, so it makes the most sense paired with rebates/tax credits or when the existing equipment is near end-of-life.",
+      cost: "$5,500 – $50,000+",
+      costNote: "Major investment. Ranges from a single AC ($5,500) to four premium full systems ($42,000+). May qualify for utility rebates and federal tax credits.",
+      costTone: "warning",
     });
   }
+
+  // Attach cost info to all other recs (HVAC already has its own above)
+  recs.forEach(function(r) {
+    if (r.cost) return;
+    if (r.id === "ductSealing")     { r.cost = "Included";          r.costNote = "Bundled in every EG Comfort package -- no add-on cost."; }
+    if (r.id === "smartThermostat") { r.cost = "$900 – $2,000";     r.costNote = "Per system, depending on thermostat tier and install complexity."; }
+    if (r.id === "roomSensors")     { r.cost = "$255 – $425";       r.costNote = "$85 per sensor; typical install is 3-5 sensors."; }
+    if (r.id === "energyMonitor")   { r.cost = "$600 – $1,800";     r.costNote = "$600 per electrical panel (hardware + install)."; }
+    if (r.id === "filterUpgrade")   { r.cost = "$850 – $3,000";     r.costNote = "Per system, depending on cabinet complexity."; }
+  });
 
   // Sort by weight descending
   recs.sort(function(a, b) { return b.weight - a.weight; });
@@ -2062,6 +2086,26 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                     <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>Why it fits this home</div>
                     <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.6 }}>{rec.why}</div>
                   </div>
+
+                  {/* Estimated cost */}
+                  {rec.cost && (
+                    <div style={{
+                      background: rec.costTone === "warning" ? T.warnD : T.surfaceHigh,
+                      border: rec.costTone === "warning" ? "1px solid #D9C870" : "1px solid " + T.border,
+                      borderRadius: T.radiusSm, padding: "12px 14px", marginBottom: 14,
+                      display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12,
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: rec.costTone === "warning" ? "#7A6010" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
+                          {rec.costTone === "warning" ? "⚠ Estimated investment" : "Estimated cost"}
+                        </div>
+                        <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.55 }}>{rec.costNote}</div>
+                      </div>
+                      <div style={{ fontFamily: T.sans, fontSize: 16, fontWeight: 800, color: rec.costTone === "warning" ? "#7A6010" : T.textPrimary, whiteSpace: "nowrap", marginTop: 2 }}>
+                        {rec.cost}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Impact grid */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px 16px" }}>
