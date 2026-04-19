@@ -145,6 +145,15 @@ const CONFIG = {
       // Default config
       defaultType: "mid", defaultInstall: "standard", defaultPoolSize: "medium",
     },
+    hvacReplacement: {
+      id: "hvacReplacement", label: "New HVAC System(s)", poolOnly: false, perSystem: false,
+      // Per-unit price by type: AC only, Furnace only, Heat Pump, Full System (AC + Furnace)
+      types: { ac: 5500, furnace: 5500, heatPump: 8500, fullSystem: 10500 },
+      // SEER tier multiplier
+      tierMultipliers: { standard: 1.0, high: 1.25, premium: 1.55 },
+      defaultType: "fullSystem", defaultTier: "high",
+      minPrice: 5000, maxPrice: 50000,
+    },
   },
 
   // APRs are illustrative placeholders -- replace with real lender terms
@@ -453,6 +462,7 @@ var UPGRADE_IMPACTS = {
   bootSealing:       { savingsLow: 0.02, savingsHigh: 0.06, scoreLow: 2,  scoreHigh: 5,  label: "Boot Sealing" },
   ductCleaning:      { savingsLow: 0.01, savingsHigh: 0.04, scoreLow: 1,  scoreHigh: 3,  label: "Duct Cleaning" },
   poolPump:          { savingsLow: 0.03, savingsHigh: 0.10, scoreLow: 2,  scoreHigh: 6,  label: "Variable-Speed Pool Pump" },
+  hvacReplacement:   { savingsLow: 0.15, savingsHigh: 0.30, scoreLow: 12, scoreHigh: 22, label: "New HVAC System(s)" },
 };
 
 // Map package/addon IDs to upgrade impact keys
@@ -479,6 +489,7 @@ function getUpgradesForSelection(packageId, addons) {
   if (addons.bootSealing       && upgrades.indexOf("bootSealing")      === -1) upgrades.push("bootSealing");
   if (addons.ductCleaning      && upgrades.indexOf("ductCleaning")     === -1) upgrades.push("ductCleaning");
   if (addons.poolPump          && upgrades.indexOf("poolPump")         === -1) upgrades.push("poolPump");
+  if (addons.hvacReplacement   && upgrades.indexOf("hvacReplacement")  === -1) upgrades.push("hvacReplacement");
   return upgrades;
 }
 
@@ -582,8 +593,8 @@ function calculateSavingsProjection(score, homeProfile, scoreInputs, packageId, 
   savingsHighTotal = Math.min(Math.round(savingsHighTotal), wasteHigh);
 
   // Projected score (capped at 97 -- no home is perfect)
-  var projScoreLow  = Math.min(97, score + scoreLowTotal);
-  var projScoreHigh = Math.min(97, score + scoreHighTotal);
+  var projScoreLow  = Math.min(99, score + scoreLowTotal);
+  var projScoreHigh = Math.min(99, score + scoreHighTotal);
 
   // Payback period using package subtotal
   var pkgPrice = getBasePrice(packageId) + addonTotal(packageId, addons, homeProfile.systemCount || 1);
@@ -643,6 +654,7 @@ var UPGRADE_UTILITY_SPLIT = {
   bootSealing:     { e: 0.50, g: 0.50 },
   ductCleaning:    { e: 0.55, g: 0.45 },
   poolPump:        { e: 1.00, g: 0.00 }, // pool pump is electric only
+  hvacReplacement: { e: 0.55, g: 0.45 }, // balanced — actual split varies by system type
 };
 
 function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId, addons) {
@@ -724,8 +736,8 @@ function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId,
 
   var combLow  = elecSavLow  + gasSavLow;
   var combHigh = elecSavHigh + gasSavHigh;
-  var projScoreLow  = Math.min(97, score + scoreLow);
-  var projScoreHigh = Math.min(97, score + scoreHigh);
+  var projScoreLow  = Math.min(99, score + scoreLow);
+  var projScoreHigh = Math.min(99, score + scoreHigh);
   var pkgCost = getBasePrice(packageId) + addonTotal(packageId, addons, homeProfile.systemCount || 1);
   var paybackLow  = combHigh > 0 ? (pkgCost / combHigh).toFixed(1) : null;
   var paybackHigh = combLow  > 0 ? (pkgCost / combLow).toFixed(1)  : null;
@@ -886,6 +898,35 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
         : "Improving filtration and filter sizing can restore airflow that has gradually degraded over time.",
       impact: { comfort: "Moderate", control: "Low", electric: "Moderate", gas: "Moderate" },
       detail: "Restrictive filters force the air handler to work harder, increasing energy consumption without improving air quality. Proper sizing and media selection balances filtration performance with airflow efficiency.",
+    });
+  }
+
+  // 6. New HVAC System(s) -- highest-impact upgrade for older equipment
+  var hvacWeight = 0;
+  if (si.hvacAge === "10plus")    hvacWeight += 5;
+  if (si.hvacAge === "5to10")     hvacWeight += 1;
+  if (si.runtime === "neverOff")  hvacWeight += 2;
+  if (si.runtime === "long")      hvacWeight += 1;
+  if (si.bills === "much")        hvacWeight += 2;
+  if (si.bills === "slightly")    hvacWeight += 1;
+  if (si.comfort === "major")     hvacWeight += 1;
+  if (hvacWeight >= 3) {
+    var hconf = hvacWeight >= 7 ? "Strong Match" : hvacWeight >= 5 ? "Likely Helpful" : "Optional";
+    var hvacWhy;
+    if (si.hvacAge === "10plus") {
+      hvacWhy = "HVAC equipment over 10 years old typically operates at 60-75% of the efficiency of modern systems. Replacement is the single highest-impact upgrade available and often qualifies for utility rebates and federal tax credits.";
+    } else if (si.runtime === "neverOff") {
+      hvacWhy = "When equipment runs almost continuously, it is often a sign the system is undersized, failing, or no longer matching the home's load. Newer right-sized equipment can dramatically reduce runtime.";
+    } else {
+      hvacWhy = "Combined with sealing and balancing, modern high-efficiency equipment delivers the largest single improvement in comfort and energy use available.";
+    }
+    recs.push({
+      id: "hvacReplacement", priority: 0, confidence: hconf, weight: hvacWeight + 5, // boost above other recs
+      name: "New HVAC System(s)",
+      what: "Replace aging HVAC equipment with modern high-efficiency systems (SEER 16-22) that use 30-50% less energy.",
+      why: hvacWhy,
+      impact: { comfort: "High", control: "Moderate", electric: "High", gas: "High" },
+      detail: "Modern equipment carries SEER ratings of 16-22 vs 8-12 for systems 10+ years old. Combined with proper duct sealing and balancing, this delivers the largest single improvement in both comfort and energy use available -- typically 15-30% reduction in HVAC-related energy spend.",
     });
   }
 
@@ -1080,6 +1121,16 @@ function calculateAddonPrice(aid, homeProfile, addonConfigs) {
     return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
   }
 
+  if (aid === "hvacReplacement") {
+    var hType  = cfg.hvacType  || a.defaultType;
+    var hTier  = cfg.hvacTier  || a.defaultTier;
+    var hCount = cfg.hvacCount != null ? cfg.hvacCount : sys;
+    var hBase  = a.types[hType] || a.types[a.defaultType];
+    var hMult  = a.tierMultipliers[hTier] || 1.0;
+    var raw    = Math.round(hBase * hMult * hCount);
+    return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
+  }
+
   return 0;
 }
 
@@ -1101,6 +1152,11 @@ function addonPrice(aid, sys) {
     var pBase = a.types[a.defaultType] || 2200;
     var pInst = a.install[a.defaultInstall] || 600;
     return Math.max(a.minPrice, Math.round((pBase + pInst) * (a.sizeMultipliers[a.defaultPoolSize] || 1.1)));
+  }
+  if (aid === "hvacReplacement") {
+    var hBase = a.types[a.defaultType] || 10500;
+    var hMult = a.tierMultipliers[a.defaultTier] || 1.25;
+    return Math.max(a.minPrice, Math.round(hBase * hMult * sys));
   }
   return 0;
 }
@@ -2864,7 +2920,7 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
   // Live score + savings projection that updates as add-ons are toggled
   var si              = scoreInputs || {};
   var currentScore    = calculateEfficiencyScore(si);
-  var emptyAddons     = { ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false };
+  var emptyAddons     = { ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false, hvacReplacement: false };
   var pkgOnly         = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, emptyAddons);
   var withSelections  = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, addons);
   var addonCount      = Object.keys(addons).filter(function(k) { return addons[k] && !addonIncluded(selectedPackageId, k); }).length;
@@ -3063,6 +3119,31 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
                   </ConfigRow>
                   <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>
                     (pump + install) x pool size multiplier. Min {fmt(a.minPrice)}.
+                  </div>
+                </div>
+              )}
+
+              {active && addon.id === "hvacReplacement" && (
+                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
+                  <ConfigRow label="System Type">
+                    {selBtn("AC Only", (addonConfigs.hvacType || a.defaultType) === "ac", function() { setCfg("hvacType", "ac"); })}
+                    {selBtn("Furnace Only", (addonConfigs.hvacType || a.defaultType) === "furnace", function() { setCfg("hvacType", "furnace"); })}
+                    {selBtn("Heat Pump", (addonConfigs.hvacType || a.defaultType) === "heatPump", function() { setCfg("hvacType", "heatPump"); })}
+                    {selBtn("Full System (AC + Furnace)", (addonConfigs.hvacType || a.defaultType) === "fullSystem", function() { setCfg("hvacType", "fullSystem"); })}
+                  </ConfigRow>
+                  <ConfigRow label="Efficiency Tier">
+                    {selBtn("Standard SEER 14-15", (addonConfigs.hvacTier || a.defaultTier) === "standard", function() { setCfg("hvacTier", "standard"); })}
+                    {selBtn("High SEER 16-18", (addonConfigs.hvacTier || a.defaultTier) === "high", function() { setCfg("hvacTier", "high"); })}
+                    {selBtn("Premium SEER 19-22", (addonConfigs.hvacTier || a.defaultTier) === "premium", function() { setCfg("hvacTier", "premium"); })}
+                  </ConfigRow>
+                  <ConfigRow label="Number of Systems to Replace">
+                    {[1, 2, 3, 4].map(function(n) {
+                      var current = addonConfigs.hvacCount != null ? addonConfigs.hvacCount : sys;
+                      return selBtn(n + " system" + (n > 1 ? "s" : ""), current === n, function() { setCfg("hvacCount", n); });
+                    })}
+                  </ConfigRow>
+                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+                    Highest-impact upgrade available. Modern equipment uses 30-50% less energy than systems 10+ years old. May qualify for utility rebates and federal tax credits. Range: {fmt(a.minPrice)} - {fmt(a.maxPrice)}.
                   </div>
                 </div>
               )}
@@ -3594,7 +3675,7 @@ export default function App() {
   var s3 = useState("performance");
   var selectedPackageId = s3[0]; var setSelectedPackageId = s3[1];
 
-  var s4 = useState({ ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false });
+  var s4 = useState({ ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false, hvacReplacement: false });
   var addons = s4[0]; var setAddons = s4[1];
 
   // addonConfigs: per-addon configuration inputs used by the pricing engine
@@ -3603,6 +3684,7 @@ export default function App() {
     thermostatType: "advanced", thermostatInstall: "standard", sensorCount: 3,
     filterComplexity: "standard",
     pumpType: "mid", pumpInstall: "standard", poolSize: "medium",
+    hvacType: "fullSystem", hvacTier: "high", hvacCount: null,  // null = use systemCount
   });
   var addonConfigs = s4b[0]; var setAddonConfigs = s4b[1];
 
