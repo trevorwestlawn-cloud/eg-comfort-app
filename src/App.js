@@ -189,20 +189,52 @@ const CONFIG = {
 };
 
 // ============================================================
-// HOUSECALL PRO MOCK SERVICE
-// Replace getPropertyData with real API call when ready
+// HOUSECALL PRO SERVICE
+// Calls the /api/property and /api/order serverless functions which
+// proxy to the real Housecall Pro API. When HCP credentials are not
+// set on the deployment, the property endpoint returns mock data and
+// the order endpoint returns a 'not configured' error -- both of which
+// the UI handles gracefully. See INTEGRATIONS.md for setup.
 // ============================================================
 const housecallProService = {
   getPropertyData: async function(address) {
-    // TODO: replace with real Housecall Pro API call
-    return {
-      squareFeet: 3700,
-      yearBuilt: 2003,
-      systemCount: 2,
-      hasPool: true,
-      source: "Housecall Pro (mock)",
-      confidence: "medium",
-    };
+    try {
+      const resp = await fetch("/api/property?address=" + encodeURIComponent(address || ""));
+      const data = await resp.json();
+      if (!resp.ok) {
+        return {
+          source: "error",
+          confidence: "none",
+          error: data.error || "Lookup failed",
+        };
+      }
+      return data;
+    } catch (e) {
+      // Network / API route not available -- fall back to deterministic mock
+      return {
+        squareFeet: 3700,
+        yearBuilt: 2003,
+        systemCount: 2,
+        hasPool: true,
+        source: "fallback (API not reachable)",
+        confidence: "low",
+      };
+    }
+  },
+
+  createOrder: async function(orderPayload) {
+    const resp = await fetch("/api/order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(orderPayload),
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      const err = new Error(data.error || data.message || "Order creation failed");
+      err.detail = data;
+      throw err;
+    }
+    return data;
   },
 };
 
@@ -1715,12 +1747,21 @@ function PropertyPrefillScreen({ homeProfile, setHomeProfile }) {
     setLoading(true);
     housecallProService.getPropertyData(addr).then(function(data) {
       setHomeProfile(function(p) {
-        return Object.assign({}, p, {
-          squareFeet:  data.squareFeet,
-          yearBuilt:   data.yearBuilt,
-          systemCount: data.systemCount,
-          hasPool:     data.hasPool,
-        });
+        // Only overwrite fields that came back -- preserve manually entered values
+        var patch = {};
+        if (data.squareFeet  != null) patch.squareFeet  = data.squareFeet;
+        if (data.yearBuilt   != null) patch.yearBuilt   = data.yearBuilt;
+        if (data.systemCount != null) patch.systemCount = data.systemCount;
+        if (data.hasPool     != null) patch.hasPool     = data.hasPool;
+        if (data.customerName) {
+          var parts = data.customerName.split(" ");
+          if (!p.customerFirstName) patch.customerFirstName = parts[0] || "";
+          if (!p.customerLastName)  patch.customerLastName  = parts.slice(1).join(" ") || "";
+        }
+        if (data.email && !p.customerEmail) patch.customerEmail = data.email;
+        if (data.phone && !p.customerPhone) patch.customerPhone = data.phone;
+        if (data.customerId) patch.hcpCustomerId = data.customerId;
+        return Object.assign({}, p, patch);
       });
       setImported(data);
       setLoading(false);
@@ -1767,7 +1808,20 @@ function PropertyPrefillScreen({ homeProfile, setHomeProfile }) {
               {loading ? "Loading..." : "Import Data"}
             </button>
           </div>
-          {imported && <div style={{ marginTop: 8, fontFamily: T.sans, fontSize: 12, color: T.accent }}>Imported from {imported.source} -- confidence: {imported.confidence}. Verify below.</div>}
+          {imported && <div style={{ marginTop: 8, fontFamily: T.sans, fontSize: 12, color: imported.error ? T.danger : T.accent }}>{imported.error ? "Lookup error: " + imported.error : "Imported from " + imported.source + " -- confidence: " + imported.confidence + ". Verify below."}</div>}
+        </div>
+
+        {/* Customer info -- needed to push order to Housecall Pro */}
+        <div style={{ marginBottom: 14, gridColumn: "1 / -1" }}>
+          <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Customer Info</div>
+        </div>
+        {field("First Name", "customerFirstName", "text", "e.g. John")}
+        {field("Last Name", "customerLastName", "text", "e.g. Smith")}
+        {field("Email", "customerEmail", "email", "e.g. john@example.com")}
+        {field("Phone", "customerPhone", "tel", "e.g. (555) 123-4567")}
+
+        <div style={{ marginBottom: 14, gridColumn: "1 / -1" }}>
+          <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Property Details</div>
         </div>
         {field("Square Feet", "squareFeet", "number", "e.g. 3700")}
         {field("Year Built", "yearBuilt", "number", "e.g. 2003")}
@@ -3442,6 +3496,104 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
   var billDisplay = getCombinedBill(homeProfile);
   var hasProj = proj.upgradeDetails.length > 0;
 
+  // Order push state -- tracks the call to /api/order
+  var sStatus = useState({ phase: "idle", message: "", estimateUrl: null });
+  var pushStatus    = sStatus[0];
+  var setPushStatus = sStatus[1];
+
+  // Build line items for HCP order from either order builder OR package + add-ons
+  function buildLineItems() {
+    if (hasOrderItems) {
+      return orderItems.map(function(it) {
+        return {
+          label:     it.customLabel || it.label,
+          unitPrice: it.unitPrice,
+          qty:       it.qty,
+          note:      it.note || "",
+        };
+      });
+    }
+    var items = [];
+    if (pkg) {
+      items.push({
+        label:     pkg.name,
+        unitPrice: pkg.price,
+        qty:       1,
+        note:      "Includes: " + pkg.includes.join("; "),
+      });
+    }
+    activeAddons.forEach(function(a) {
+      items.push({
+        label:     a.label,
+        unitPrice: calculateAddonPrice(a.id, homeProfile, addonConfigs),
+        qty:       1,
+        note:      "",
+      });
+    });
+    return items;
+  }
+
+  function buildOrderNotes() {
+    var lines = [];
+    lines.push("Efficiency Score: " + score + "/100 (" + getEfficiencyBand(score).label + ")");
+    if (proj.savingsLow > 0) {
+      lines.push("Projected Annual Savings: " + fmt(proj.savingsLow) + " - " + fmt(proj.savingsHigh));
+      lines.push("Projected Score After: " + proj.projScoreLow + "-" + proj.projScoreHigh + "/100");
+    }
+    lines.push("Payment Option: " + opt.label + (opt.apr > 0 ? " @ " + fmtPct(opt.apr) + " APR" : ""));
+    lines.push("Subtotal: " + fmt(subtotal) + " | Total: " + fmt(result.totalPaid));
+    if (!isCash) lines.push("Estimated Monthly: " + fmtD(result.monthly));
+    if ((homeProfile.painPoints || []).length > 0) {
+      lines.push("Pain Points: " + homeProfile.painPoints.join(", "));
+    }
+    return lines.join("\n");
+  }
+
+  function handleMoveForward() {
+    var firstName = (homeProfile.customerFirstName || "").trim();
+    var lastName  = (homeProfile.customerLastName  || "").trim();
+    if (!firstName && !lastName) {
+      setPushStatus({ phase: "error", message: "Please enter customer first/last name on the property screen before sending to Housecall Pro.", estimateUrl: null });
+      return;
+    }
+    setPushStatus({ phase: "sending", message: "Creating estimate in Housecall Pro...", estimateUrl: null });
+
+    housecallProService.createOrder({
+      customer: {
+        customerId: homeProfile.hcpCustomerId || null,
+        firstName:  firstName,
+        lastName:   lastName,
+        email:      homeProfile.customerEmail,
+        phone:      homeProfile.customerPhone,
+        address:    homeProfile.address,
+        city:       homeProfile.city,
+        state:      homeProfile.state,
+        zip:        homeProfile.zip,
+      },
+      lineItems: buildLineItems(),
+      notes:     buildOrderNotes(),
+      totals: {
+        subtotal:      subtotal,
+        financeCharge: result.financeCharge,
+        totalPaid:     result.totalPaid,
+        monthly:       result.monthly,
+        term:          opt.label,
+      },
+    }).then(function(resp) {
+      setPushStatus({
+        phase:   "success",
+        message: "Estimate created in Housecall Pro" + (resp.estimateId ? " (id: " + resp.estimateId + ")" : ""),
+        estimateUrl: resp.estimateUrl || null,
+      });
+    }).catch(function(err) {
+      setPushStatus({
+        phase:   "error",
+        message: err.message || "Failed to create order",
+        estimateUrl: null,
+      });
+    });
+  }
+
   return (
     <Wrap>
       <SecTitle children="Your EG Comfort Summary" sub="Everything selected, totaled, and ready to move on." />
@@ -3584,9 +3736,30 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
       </div>
 
       <div style={{ display: "flex", gap: 14, marginBottom: 14 }}>
-        <button style={{ flex: 1, padding: "17px", background: T.grad, border: "none", borderRadius: T.radiusSm, fontFamily: T.sans, fontSize: 15, fontWeight: 700, color: T.white, cursor: "pointer", boxShadow: "0 5px 18px rgba(39,209,127,0.28)" }}>Move Forward</button>
+        <button
+          onClick={handleMoveForward}
+          disabled={pushStatus.phase === "sending"}
+          style={{ flex: 1, padding: "17px", background: pushStatus.phase === "sending" ? T.surfaceHigh : T.grad, border: "none", borderRadius: T.radiusSm, fontFamily: T.sans, fontSize: 15, fontWeight: 700, color: pushStatus.phase === "sending" ? T.textMuted : T.white, cursor: pushStatus.phase === "sending" ? "wait" : "pointer", boxShadow: pushStatus.phase === "sending" ? "none" : "0 5px 18px rgba(39,209,127,0.28)" }}
+        >
+          {pushStatus.phase === "sending" ? "Sending to Housecall Pro..." : "Move Forward (Send to Housecall Pro)"}
+        </button>
         <button style={{ flex: 1, padding: "17px", background: T.surface, border: "1px solid " + T.surfaceBorder, borderRadius: T.radiusSm, fontFamily: T.sans, fontSize: 15, fontWeight: 700, color: T.positive, cursor: "pointer" }}>Schedule Install</button>
       </div>
+
+      {/* Push status feedback */}
+      {pushStatus.phase === "success" && (
+        <div style={{ background: T.positiveD, border: "1px solid " + T.positive + "55", borderRadius: T.radiusSm, padding: "12px 16px", marginBottom: 14 }}>
+          <div style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 700, color: T.positive, marginBottom: 4 }}>✓ Sent to Housecall Pro</div>
+          <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec }}>{pushStatus.message}</div>
+          {pushStatus.estimateUrl && <a href={pushStatus.estimateUrl} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 6, fontFamily: T.sans, fontSize: 13, color: T.positive, fontWeight: 600 }}>Open estimate in Housecall Pro →</a>}
+        </div>
+      )}
+      {pushStatus.phase === "error" && (
+        <div style={{ background: T.dangerD, border: "1px solid " + T.danger + "55", borderRadius: T.radiusSm, padding: "12px 16px", marginBottom: 14 }}>
+          <div style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 700, color: T.danger, marginBottom: 4 }}>Could not send to Housecall Pro</div>
+          <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec }}>{pushStatus.message}</div>
+        </div>
+      )}
       <Disc lines={[CONFIG.disclaimers.general, CONFIG.disclaimers.savings, CONFIG.disclaimers.finance]} />
       <RepNote say="Keep the close simple. Ask for the decision directly." phrase="Is there anything you need to feel good about moving forward?" ask="Is it more the investment, or more about timing?" />
     </Wrap>
@@ -3807,7 +3980,16 @@ function OrderBuilderScreen({ orderItems, setOrderItems, selectedTermId }) {
 // APP ROOT
 // ============================================================
 export default function App() {
-  var s1 = useState({ squareFeet: 3700, yearBuilt: 2003, monthlyBill: 180.13, electricBill: "", gasBill: "", systemCount: 2, hasPool: true, address: "", painPoints: [] });
+  var s1 = useState({
+    squareFeet: 3700, yearBuilt: 2003, monthlyBill: 180.13,
+    electricBill: "", gasBill: "",
+    systemCount: 2, hasPool: true,
+    address: "", city: "", state: "TX", zip: "",
+    customerFirstName: "", customerLastName: "",
+    customerEmail: "", customerPhone: "",
+    hcpCustomerId: null,
+    painPoints: [],
+  });
   var homeProfile = s1[0]; var setHomeProfile = s1[1];
 
   // Default score inputs -- start neutral
