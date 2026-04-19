@@ -1055,6 +1055,22 @@ function calculateSavingsScenarios(monthlyBill) {
   ];
 }
 
+// Engine-driven payoff scenarios. Pulls the actual annual savings range
+// produced by the savings/score engine for the customer's selected
+// package + add-ons (which is itself calibrated against real EG Comfort
+// customer outcomes). Returns three points in that range so the close /
+// summary screens can show conservative / expected / strong payoffs
+// that genuinely reflect the additions made to the system.
+function buildEngineScenarios(savingsLowAnnual, savingsHighAnnual) {
+  if (!(savingsLowAnnual > 0) || !(savingsHighAnnual > 0)) return [];
+  var mid = Math.round((savingsLowAnnual + savingsHighAnnual) / 2);
+  return [
+    { label: "Conservative", note: "low end of projected range",  annual: savingsLowAnnual,  mo: Math.round(savingsLowAnnual / 12) },
+    { label: "Expected",     note: "midpoint of projected range", annual: mid,                mo: Math.round(mid / 12) },
+    { label: "Strong",       note: "high end of projected range", annual: savingsHighAnnual, mo: Math.round(savingsHighAnnual / 12) },
+  ];
+}
+
 // Returns combined monthly bill from homeProfile -- always use this instead of homeProfile.monthlyBill
 function getCombinedBill(homeProfile) {
   var elec = parseFloat(homeProfile.electricBill) || 0;
@@ -2114,6 +2130,21 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                     {ImpactPill("Electric", rec.impact.electric)}
                     {ImpactPill("Gas", rec.impact.gas)}
                   </div>
+
+                  {/* Cost-effectiveness alternative -- shown on HVAC rec to point
+                      to the sealing + boot combo as the higher-leverage entry point */}
+                  {rec.id === "hvacReplacement" && (function() {
+                    var perfPkg = CONFIG.packages.performance;
+                    if (!perfPkg) return null;
+                    return (
+                      <div style={{ marginTop: 14, background: T.accentLight, border: "1px solid " + T.accent + "44", borderRadius: T.radiusSm, padding: "12px 14px" }}>
+                        <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>💡 Compare: a higher-leverage starting point</div>
+                        <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.6 }}>
+                          The <strong style={{ color: T.textPrimary }}>{perfPkg.name} package</strong> ({fmt(perfPkg.price)}) bundles <strong>duct sealing + boot sealing + duct cleaning</strong>. For most homes this combination delivers a meaningful share of the comfort and efficiency gains a full system replacement would, at a fraction of the investment and a much shorter payback. Worth doing first; a full HVAC replacement can be staged in later if needed.
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Learn more toggle */}
@@ -2194,14 +2225,14 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                 </div>
               </div>
               <div>
-                <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 8 }}>Estimated Payback (savings applied to investment)</div>
-                {dual.pkgCost > 0 && getCombinedBill(homeProfile) > 0
-                  ? calculateSavingsScenarios(getCombinedBill(homeProfile)).map(function(s) {
+                <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.45)", marginBottom: 8 }}>Estimated Payback (engine-projected savings applied to investment)</div>
+                {dual.pkgCost > 0 && dual.combLow > 0
+                  ? buildEngineScenarios(dual.combLow, dual.combHigh).map(function(s) {
                       var mo = payoffMonths(dual.pkgCost, s.mo);
                       var yr = payoffYears(mo);
                       return (
                         <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontFamily: T.sans, fontSize: 14, color: "#FFFFFF" }}>
-                          <span style={{ color: "rgba(255,255,255,0.7)" }}>{s.label} ({s.pct}) — {fmtD(s.mo)}/mo</span>
+                          <span style={{ color: "rgba(255,255,255,0.7)" }}>{s.label} — {fmt(s.annual)}/yr ({fmt(s.mo)}/mo)</span>
                           <span style={{ fontWeight: 700, color: "#27D17F" }}>{yr} yrs</span>
                         </div>
                       );
@@ -2233,7 +2264,7 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
             if (pkg.id === "coreSeal") {
               whyFit = "Best starting point for homes where airflow and duct leakage are the primary concern. Addresses the single largest driver of efficiency loss.";
             } else if (pkg.id === "performance") {
-              whyFit = "Recommended for homes with both airflow and air quality concerns. Adds duct cleaning and boot sealing to the core seal for a more complete system restoration.";
+              whyFit = "The highest-leverage option for most homes -- combines duct sealing + boot sealing + duct cleaning for a complete delivery-system restoration. Typically delivers the strongest savings-per-dollar of any single investment, which is why it is the most cost-effective starting point we offer.";
             } else {
               whyFit = "Ideal for homes where comfort control, monitoring, and full system delivery are all priorities. Includes smart thermostats, sensors, filters, and monitoring alongside the complete seal package.";
             }
@@ -2295,14 +2326,15 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                 </div>
 
                 {(function() {
-                  var monthly = getCombinedBill(homeProfile);
-                  if (!(monthly > 0) || !(pkg.price > 0)) return null;
-                  var moderate = calculateSavingsScenarios(monthly)[1]; // 25%
-                  var mo = payoffMonths(pkg.price, moderate.mo);
+                  if (!(pkgDual.combLow > 0) || !(pkg.price > 0)) return null;
+                  var scenarios = buildEngineScenarios(pkgDual.combLow, pkgDual.combHigh);
+                  if (scenarios.length === 0) return null;
+                  var expected = scenarios[1]; // midpoint
+                  var mo = payoffMonths(pkg.price, expected.mo);
                   var yr = payoffYears(mo);
                   return (
                     <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted }}>
-                      Score: +{pkgDual.scoreLow} to +{pkgDual.scoreHigh} pts &nbsp;|&nbsp; Payoff at 25% savings: ~{yr} yrs &nbsp;|&nbsp; Illustrative only
+                      Score: +{pkgDual.scoreLow} to +{pkgDual.scoreHigh} pts &nbsp;|&nbsp; Expected payoff: ~{yr} yrs &nbsp;|&nbsp; Based on {fmt(pkgDual.combLow)}–{fmt(pkgDual.combHigh)}/yr projected savings
                     </div>
                   );
                 })()}
@@ -3267,12 +3299,16 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
 // ============================================================
 // SCREEN 12 -- Financing (Decision Screen)
 // ============================================================
-function FinancingScreen({ subtotal, selectedTermId, setSelectedTermId, homeProfile }) {
+function FinancingScreen({ subtotal, selectedTermId, setSelectedTermId, homeProfile, scoreInputs, selectedPackageId, addons }) {
   var opt    = CONFIG.financeOptions.find(function(o) { return o.id === selectedTermId; }) || CONFIG.financeOptions[0];
   var result = calculatePayment(subtotal, opt.months, opt.apr);
   var isCash = opt.months === 0;
   var bill   = getCombinedBill(homeProfile);
-  var svs    = calculateSavingsScenarios(bill);
+  // Engine-projected savings from current package + add-on selections
+  var si    = scoreInputs || {};
+  var score = calculateEfficiencyScore(si);
+  var proj  = calculateSavingsProjection(score, homeProfile, si, selectedPackageId, addons || {});
+  var svs   = buildEngineScenarios(proj.savingsLow, proj.savingsHigh);
 
   return (
     <Wrap>
@@ -3318,12 +3354,15 @@ function FinancingScreen({ subtotal, selectedTermId, setSelectedTermId, homeProf
         </div>
       </div>
 
-      {/* Payoff -- anchored to homeowner's actual bill entered on screen 6 */}
+      {/* Payoff -- engine-projected savings from selected upgrades */}
       <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
-        Savings Payoff Illustration
+        Savings Payoff Based on Your Selections
       </div>
       <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textMuted, marginBottom: 14 }}>
-        Based on your {fmtD(bill)}/mo bill. If savings were applied toward the investment -- illustrative only.
+        {svs.length > 0
+          ? <span>Engine projects <strong style={{ color: T.dark }}>{fmt(proj.savingsLow)} – {fmt(proj.savingsHigh)}/yr</strong> in savings from the package + add-ons currently selected (calibrated to real EG Comfort customer outcomes). Below: how those savings pay off the {fmt(result.totalPaid)} total cost.</span>
+          : <span>Add a package and any add-ons to see projected savings and payoff timeline here.</span>
+        }
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginBottom: 8 }}>
         {svs.map(function(s) {
@@ -3331,9 +3370,9 @@ function FinancingScreen({ subtotal, selectedTermId, setSelectedTermId, homeProf
           var yr = payoffYears(mo);
           return (
             <div key={s.label} style={{ flex: "1 1 140px", background: T.surface, border: "1px solid " + T.border, borderRadius: T.radius, padding: "16px 14px", boxShadow: T.shadow, textAlign: "center" }}>
-              <div style={{ fontFamily: T.sans, fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{s.label} ({s.pct})</div>
-              <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.accent, lineHeight: 1.1 }}>{fmtD(s.mo)}<span style={{ fontSize: 11, fontWeight: 400 }}>/mo</span></div>
-              <div style={{ fontFamily: T.sans, fontSize: 10, color: T.muted, marginBottom: 8 }}>saved on a {fmtD(bill)} bill</div>
+              <div style={{ fontFamily: T.sans, fontSize: 10, color: T.muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>{s.label}</div>
+              <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.accent, lineHeight: 1.1 }}>{fmt(s.annual)}<span style={{ fontSize: 11, fontWeight: 400 }}>/yr</span></div>
+              <div style={{ fontFamily: T.sans, fontSize: 10, color: T.muted, marginBottom: 8 }}>{fmt(s.mo)}/mo • {s.note}</div>
               <div style={{ borderTop: "1px solid " + T.border, paddingTop: 8 }} />
               <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, marginTop: 6 }}>
                 {mo !== null ? <span>{mo} mo<br /><strong style={{ color: T.dark }}>{yr} yrs to offset</strong></span> : "N/A"}
@@ -3391,15 +3430,15 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
   var result = calculatePayment(subtotal, opt.months, opt.apr);
   var isCash = opt.months === 0;
   var bill   = getCombinedBill(homeProfile);
-  var sv     = calculateSavingsScenarios(bill);
-  var mo25   = payoffMonths(result.totalPaid, sv[1].mo);
-  var yr25   = payoffYears(mo25);
   var activeAddons = visibleAddons(homeProfile.hasPool).filter(function(a) { return addons[a.id] && !addonIncluded(selectedPackageId, a.id); });
   var hasOrderItems = orderItems && orderItems.length > 0;
   // Recalculate savings projection using same engine as diagnostic screen
   var si    = scoreInputs || {};
   var score = calculateEfficiencyScore(si);
   var proj  = calculateSavingsProjection(score, homeProfile, si, selectedPackageId, addons);
+  // Engine-driven payoff scenarios (uses actual projected savings from
+  // selected package + add-ons, not generic % of bill)
+  var sv = buildEngineScenarios(proj.savingsLow, proj.savingsHigh);
   var billDisplay = getCombinedBill(homeProfile);
   var hasProj = proj.upgradeDetails.length > 0;
 
@@ -3491,16 +3530,16 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
               </div>
             </div>
 
-            {/* Payback -- 3 scenarios using financing-screen math */}
-            {bill > 0 && result.totalPaid > 0 && (
+            {/* Payback -- engine-projected savings from selected upgrades applied to total cost */}
+            {result.totalPaid > 0 && sv.length > 0 && (
               <div style={{ paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
-                <div style={{ fontFamily: T.sans, fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>Estimated Payoff (savings applied to total cost of {fmt(result.totalPaid)})</div>
+                <div style={{ fontFamily: T.sans, fontSize: 12, color: "rgba(255,255,255,0.5)", marginBottom: 8 }}>Estimated Payoff (engine-projected savings from your selections, applied to total cost of {fmt(result.totalPaid)})</div>
                 {sv.map(function(s) {
                   var mo = payoffMonths(result.totalPaid, s.mo);
                   var yr = payoffYears(mo);
                   return (
                     <div key={s.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 4, fontFamily: T.sans, fontSize: 14, color: "#FFFFFF" }}>
-                      <span style={{ color: "rgba(255,255,255,0.7)" }}>{s.label} ({s.pct}) — {fmtD(s.mo)}/mo saved</span>
+                      <span style={{ color: "rgba(255,255,255,0.7)" }}>{s.label} — {fmt(s.annual)}/yr ({fmt(s.mo)}/mo)</span>
                       <span style={{ fontWeight: 700, color: "#27D17F" }}>{yr} yrs</span>
                     </div>
                   );
@@ -3824,7 +3863,7 @@ export default function App() {
     { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} /> },
     { label: "Add-Ons",    c: <AddonsScreen selectedPackageId={selectedPackageId} addons={addons} setAddons={setAddons} homeProfile={homeProfile} addonConfigs={addonConfigs} setAddonConfigs={setAddonConfigs} scoreInputs={scoreInputs} /> },
     { label: "Order",      c: <OrderBuilderScreen orderItems={orderItems} setOrderItems={setOrderItems} selectedTermId={selectedTermId} /> },
-    { label: "Financing",  c: <FinancingScreen subtotal={sub} selectedTermId={selectedTermId} setSelectedTermId={setSelectedTermId} homeProfile={homeProfile} /> },
+    { label: "Financing",  c: <FinancingScreen subtotal={sub} selectedTermId={selectedTermId} setSelectedTermId={setSelectedTermId} homeProfile={homeProfile} scoreInputs={scoreInputs} selectedPackageId={selectedPackageId} addons={addons} /> },
     { label: "Proof",      c: <ProofScreen /> },
     { label: "Summary",    c: <CloseScreen selectedPackageId={selectedPackageId} addons={addons} homeProfile={homeProfile} subtotal={sub} selectedTermId={selectedTermId} addonConfigs={addonConfigs} orderItems={orderItems} scoreInputs={scoreInputs} /> },
   ];
