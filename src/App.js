@@ -1063,6 +1063,32 @@ function getHomeSize(sqft) {
   return "large";
 }
 
+// Estimated Texas year-round average residential utility bills.
+// Based on typical TX residential rates ($0.13-$0.14/kWh electric,
+// ~$1.20/CCF gas) and average usage scaled to home size.
+// Pool adds ~$70/month averaged across the year (heavy summer load).
+// Used for placeholder/helper text only -- actual bills should be
+// entered when known.
+function estimateTexasBills(sqft, hasPool) {
+  var s = parseFloat(sqft) || 2000;
+  var electric;
+  if (s < 1500)      electric = 120;
+  else if (s < 2500) electric = 160;
+  else if (s < 3500) electric = 210;
+  else if (s < 4500) electric = 260;
+  else               electric = 320;
+  if (hasPool) electric += 70;
+
+  var gas;
+  if (s < 1500)      gas = 50;
+  else if (s < 2500) gas = 70;
+  else if (s < 3500) gas = 90;
+  else if (s < 4500) gas = 110;
+  else               gas = 135;
+
+  return { electric: electric, gas: gas };
+}
+
 // Full pricing engine -- calculates each addon dynamically from homeProfile + addonConfig
 // addonConfig is the per-addon object from the addonConfigs state (thermostatType, pumpType etc)
 function calculateAddonPrice(aid, homeProfile, addonConfigs) {
@@ -1606,6 +1632,43 @@ function PropertyPrefillScreen({ homeProfile, setHomeProfile }) {
   var st2 = useState(null);
   var imported = st2[0]; var setImported = st2[1];
 
+  // Texas-based estimates that update as sqft / pool change
+  var est = estimateTexasBills(homeProfile.squareFeet, homeProfile.hasPool);
+
+  function billField(label, key, estValue) {
+    var hasValue = homeProfile[key] != null && homeProfile[key] !== "";
+    return (
+      <div style={{ marginBottom: 18 }}>
+        <label style={{ display: "block", fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 7 }}>{label}</label>
+        <input
+          type="number"
+          value={homeProfile[key] != null ? homeProfile[key] : ""}
+          placeholder={"Estimated $" + estValue + "/mo (Texas avg)"}
+          onChange={function(e) {
+            var raw = e.target.value;
+            var val = (raw !== "" && raw !== "-") ? parseFloat(raw) : raw;
+            setHomeProfile(function(p) { return Object.assign({}, p, { [key]: val }); });
+          }}
+          style={{ width: "100%", boxSizing: "border-box", border: "1px solid " + T.border, borderRadius: T.radiusSm, padding: "13px 14px", fontFamily: T.sans, fontSize: 15, color: T.dark, background: T.surface, outline: "none" }}
+        />
+        <div style={{ marginTop: 6, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
+          <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, lineHeight: 1.4 }}>
+            Texas year-round avg for this home: <strong style={{ color: T.textSec }}>${estValue}/mo</strong>
+          </div>
+          {!hasValue && (
+            <button
+              type="button"
+              onClick={function() { setHomeProfile(function(p) { return Object.assign({}, p, { [key]: estValue }); }); }}
+              style={{ background: T.accentLight, color: T.accent, border: "1px solid " + T.accent + "33", borderRadius: T.radiusSm, padding: "4px 10px", fontFamily: T.sans, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}
+            >
+              Use estimate
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function handleImport() {
     var addr = homeProfile.address || "";
     if (!addr.trim()) return;
@@ -1668,8 +1731,8 @@ function PropertyPrefillScreen({ homeProfile, setHomeProfile }) {
         </div>
         {field("Square Feet", "squareFeet", "number", "e.g. 3700")}
         {field("Year Built", "yearBuilt", "number", "e.g. 2003")}
-        {field("Avg Monthly Electric Bill ($)", "electricBill", "number", "e.g. 180")}
-        {field("Avg Monthly Gas Bill ($)", "gasBill", "number", "e.g. 95")}
+        {billField("Avg Monthly Electric Bill ($)", "electricBill", est.electric)}
+        {billField("Avg Monthly Gas Bill ($)", "gasBill", est.gas)}
         <div style={{ marginBottom: 18 }}>
           <label style={{ display: "block", fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 7 }}>Number of HVAC Systems</label>
           <select value={homeProfile.systemCount || 1} onChange={function(e) { setHomeProfile(function(p) { return Object.assign({}, p, { systemCount: parseInt(e.target.value) }); }); }} style={{ width: "100%", border: "1px solid " + T.border, borderRadius: T.radiusSm, padding: "13px 14px", fontFamily: T.sans, fontSize: 15, color: T.dark, background: T.surface, outline: "none" }}>
@@ -1706,6 +1769,7 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
   var dual      = calculateDualUtilitySavings(score, homeProfile, scoreInputs, selectedPackageId, addons);
   var explanation = getLiveExplanation(score, scoreInputs, homeProfile);
   var homeEra   = getHomeEra(homeProfile.yearBuilt || 0);
+  var billEst   = estimateTexasBills(homeProfile.squareFeet, homeProfile.hasPool);
 
   var openRec   = useState(null); var expandedRec = openRec[0]; var setExpandedRec = openRec[1];
 
@@ -1853,8 +1917,8 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
             <div style={{ fontFamily: T.sans, fontSize: 14, fontWeight: 700, color: T.textPrimary, marginBottom: 6 }}>Monthly Utility Bills</div>
             <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, marginBottom: 18, lineHeight: 1.5 }}>Enter your average monthly bills. Both are used to calculate heating and cooling savings separately.</div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 20px" }}>
-              {NumInput("Electric Bill ($)", "electricBill", "e.g. 180", "Affects cooling savings estimate")}
-              {NumInput("Gas Bill ($)", "gasBill", "e.g. 95", "Affects heating savings estimate")}
+              {NumInput("Electric Bill ($)", "electricBill", "Estimated $" + billEst.electric + "/mo (TX avg)", "Texas year-round avg for this home: $" + billEst.electric + "/mo. Affects cooling savings.")}
+              {NumInput("Gas Bill ($)", "gasBill", "Estimated $" + billEst.gas + "/mo (TX avg)", "Texas year-round avg for this home: $" + billEst.gas + "/mo. Affects heating savings.")}
             </div>
           </div>
 
