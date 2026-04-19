@@ -2855,11 +2855,19 @@ function PackagesScreen({ selectedPackageId, setSelectedPackageId }) {
 // ============================================================
 // SCREEN 11 -- Add-Ons (Guided Configuration + Pricing Engine)
 // ============================================================
-function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addonConfigs, setAddonConfigs }) {
+function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addonConfigs, setAddonConfigs, scoreInputs }) {
   var visible = visibleAddons(homeProfile.hasPool);
   var sys  = homeProfile.systemCount || 1;
   var sqft = homeProfile.squareFeet || 2000;
   var homeSize = getHomeSize(sqft);
+
+  // Live score + savings projection that updates as add-ons are toggled
+  var si              = scoreInputs || {};
+  var currentScore    = calculateEfficiencyScore(si);
+  var emptyAddons     = { ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false };
+  var pkgOnly         = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, emptyAddons);
+  var withSelections  = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, addons);
+  var addonCount      = Object.keys(addons).filter(function(k) { return addons[k] && !addonIncluded(selectedPackageId, k); }).length;
 
   function toggle(id) { setAddons(function(p) { return Object.assign({}, p, { [id]: !p[id] }); }); }
   function setCfg(key, val) { setAddonConfigs(function(p) { return Object.assign({}, p, { [key]: val }); }); }
@@ -2885,9 +2893,57 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
     );
   }
 
+  // Score band & color for the live indicator (uses projected score with current selections)
+  var liveProjected = withSelections.projScoreLow > 0 ? Math.round((withSelections.projScoreLow + withSelections.projScoreHigh) / 2) : currentScore;
+  var liveBand      = getEfficiencyBand(liveProjected);
+  var pkgOnlyMid    = pkgOnly.projScoreLow > 0 ? Math.round((pkgOnly.projScoreLow + pkgOnly.projScoreHigh) / 2) : currentScore;
+  var addonBoost    = liveProjected - pkgOnlyMid;
+
   return (
     <Wrap>
       <SecTitle children="System Configuration" sub="Configure each add-on for this home. Price updates automatically." />
+
+      {/* ── LIVE SCORE + SAVINGS PROJECTION ── updates as add-ons are toggled ── */}
+      <div style={{ background: "#1C2B22", borderRadius: T.radius, padding: "20px 22px", marginBottom: 22, boxShadow: T.shadowMd }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.1em" }}>Live Score & Savings</div>
+          {addonCount > 0 && <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: "#27D17F", background: "rgba(39,209,127,0.15)", padding: "3px 10px", borderRadius: 99 }}>{addonCount} add-on{addonCount > 1 ? "s" : ""} selected</div>}
+        </div>
+
+        {/* Score progression -- current → projected */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 14 }}>
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>Current</div>
+            <div style={{ fontFamily: T.sans, fontSize: 28, fontWeight: 800, color: "#FFFFFF", lineHeight: 1 }}>{currentScore}</div>
+          </div>
+          <div style={{ flex: 2, position: "relative", height: 14, background: "rgba(255,255,255,0.1)", borderRadius: 99, overflow: "hidden" }}>
+            <div style={{ position: "absolute", left: currentScore + "%", width: Math.max(0, liveProjected - currentScore) + "%", height: "100%", background: "linear-gradient(90deg, " + liveBand.color + "55, " + liveBand.color + ")", borderRadius: 99, transition: "all 0.4s ease" }} />
+            <div style={{ position: "absolute", left: 0, width: currentScore + "%", height: "100%", background: "rgba(255,255,255,0.2)", borderRadius: 99 }} />
+          </div>
+          <div style={{ textAlign: "center", flex: 1 }}>
+            <div style={{ fontFamily: T.sans, fontSize: 11, color: "rgba(255,255,255,0.5)", marginBottom: 4 }}>Projected</div>
+            <div style={{ fontFamily: T.sans, fontSize: 28, fontWeight: 800, color: liveBand.color, lineHeight: 1, transition: "color 0.3s" }}>{liveProjected}</div>
+          </div>
+        </div>
+
+        {/* Savings + improvement breakdown */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, paddingTop: 14, borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+          <div>
+            <div style={{ fontFamily: T.sans, fontSize: 10, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Score Improvement</div>
+            <div style={{ fontFamily: T.sans, fontSize: 16, fontWeight: 700, color: "#FFFFFF" }}>+{withSelections.scoreLow} to +{withSelections.scoreHigh} pts</div>
+            {addonBoost > 0 && <div style={{ fontFamily: T.sans, fontSize: 11, color: "#27D17F", marginTop: 2 }}>+{addonBoost} from add-ons</div>}
+          </div>
+          <div>
+            <div style={{ fontFamily: T.sans, fontSize: 10, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Annual Savings</div>
+            <div style={{ fontFamily: T.sans, fontSize: 16, fontWeight: 700, color: "#27D17F" }}>{withSelections.combLow > 0 ? fmt(withSelections.combLow) + " – " + fmt(withSelections.combHigh) : "Enter bills"}</div>
+          </div>
+          <div>
+            <div style={{ fontFamily: T.sans, fontSize: 10, color: "rgba(255,255,255,0.5)", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 4 }}>Monthly Savings</div>
+            <div style={{ fontFamily: T.sans, fontSize: 16, fontWeight: 700, color: "#27D17F" }}>{withSelections.monthlyLow > 0 ? fmt(withSelections.monthlyLow) + " – " + fmt(withSelections.monthlyHigh) : "--"}</div>
+          </div>
+        </div>
+      </div>
+
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {visible.map(function(addon) {
           var inc    = addonIncluded(selectedPackageId, addon.id);
@@ -3576,7 +3632,7 @@ export default function App() {
     { label: "Impact",     c: <ImpactScreen homeProfile={homeProfile} /> },
     { label: "Solution",   c: <SolutionScreen /> },
     { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} /> },
-    { label: "Add-Ons",    c: <AddonsScreen selectedPackageId={selectedPackageId} addons={addons} setAddons={setAddons} homeProfile={homeProfile} addonConfigs={addonConfigs} setAddonConfigs={setAddonConfigs} /> },
+    { label: "Add-Ons",    c: <AddonsScreen selectedPackageId={selectedPackageId} addons={addons} setAddons={setAddons} homeProfile={homeProfile} addonConfigs={addonConfigs} setAddonConfigs={setAddonConfigs} scoreInputs={scoreInputs} /> },
     { label: "Order",      c: <OrderBuilderScreen orderItems={orderItems} setOrderItems={setOrderItems} selectedTermId={selectedTermId} /> },
     { label: "Financing",  c: <FinancingScreen subtotal={sub} selectedTermId={selectedTermId} setSelectedTermId={setSelectedTermId} homeProfile={homeProfile} /> },
     { label: "Proof",      c: <ProofScreen /> },
