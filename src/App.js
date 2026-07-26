@@ -84,22 +84,6 @@ const CONFIG = {
       guarantee: "Same 4% leakage guarantee as Core Seal.",
       includedAddons: ["ductCleaning"],
     },
-    ultimate: {
-      id: "ultimate",
-      name: "EG Comfort Ultimate",
-      priceBySystem: { 1: 4550, 2: 5900, 3: 6800 },
-      priceIncrement: 700,
-      baseSystems: 3,
-      badge: "Complete Duct Restoration",
-      includes: [
-        "Everything in Performance",
-        "Boot sealing at every register",
-        "4-inch filter / plenum upgrade (up to 2 systems)",
-        "12-month comfort follow-up",
-      ],
-      guarantee: "Same 4% leakage guarantee as Core Seal.",
-      includedAddons: ["ductCleaning", "bootSealing", "filterUpgrade"],
-    },
   },
 
   // The New York Times piece on duct leakage and home energy loss --
@@ -443,15 +427,11 @@ var UPGRADE_IMPACTS = {
 function getUpgradesForSelection(packageId, addons) {
   var upgrades = [];
   // Package-based upgrades
-  if (packageId === "coreSeal" || packageId === "performance" || packageId === "ultimate") {
+  if (packageId === "coreSeal" || packageId === "performance") {
     upgrades.push("ductSealing");
   }
-  if (packageId === "performance" || packageId === "ultimate") {
+  if (packageId === "performance") {
     upgrades.push("ductCleaning");
-    upgrades.push("bootSealing");
-  }
-  if (packageId === "ultimate") {
-    upgrades.push("filterUpgrade");
   }
   // Active add-ons not already in package
   if (addons.filterUpgrade && upgrades.indexOf("filterUpgrade") === -1) upgrades.push("filterUpgrade");
@@ -1086,7 +1066,6 @@ var ORDER_CATALOG = [
   // Packages
   { id: "pkg_coreSeal",    type: "package", label: "Core Seal Package (2-system default)",     unitPrice: 3000, category: "Packages",  defaultQty: 1, note: "1sys $2,250 / 2sys $3,000 / 3sys $3,500 / +$500 per additional" },
   { id: "pkg_performance", type: "package", label: "Performance Package (2-system default)",   unitPrice: 4000, category: "Packages",  defaultQty: 1, note: "Core Seal + cleaning. 1sys $3,250 / 2sys $4,000 / 3sys $4,500 / +$500" },
-  { id: "pkg_ultimate",    type: "package", label: "Ultimate Package (2-system default)",      unitPrice: 5900, category: "Packages",  defaultQty: 1, note: "Performance + boot sealing + filter/plenum. 1sys $4,550 / 2sys $5,900 / 3sys $6,800 / +$700" },
   // Duct Services (add-on)
   { id: "ao_ductClean",    type: "addon",   label: "Duct Cleaning",                  unitPrice: 799,  category: "Add-Ons",   defaultQty: 1, note: "Adjust qty for multiple systems" },
   { id: "ao_bootSeal",     type: "addon",   label: "Boot Sealing",                   unitPrice: 299,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
@@ -2682,7 +2661,7 @@ function ImpactScreen({ homeProfile }) {
 
 // All 3 EG Comfort packages include Aeroseal duct sealing
 function packageIncludesAeroseal(packageId) {
-  return packageId === "coreSeal" || packageId === "performance" || packageId === "ultimate";
+  return packageId === "coreSeal" || packageId === "performance";
 }
 
 function AerosealModule({ packageId, context }) {
@@ -2868,7 +2847,7 @@ function PackagesScreen({ selectedPackageId, setSelectedPackageId, homeProfile }
   return (
     <Wrap>
       <SecTitle children="Choose the Right Package" sub={"Prices shown for a " + sysCount + "-system home. All packages include the assessment-first guarantee: if we don't measure leakage over the 4% code threshold, we walk away at no cost."} />
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16, alignItems: "start" }}>
         {pkgs.map(function(pkg) {
           var sel = selectedPackageId === pkg.id;
           var isMid = pkg.id === "performance";
@@ -2893,19 +2872,17 @@ function PackagesScreen({ selectedPackageId, setSelectedPackageId, homeProfile }
       {/* Systems-count pricing reference */}
       <div style={{ marginTop: 22, background: T.surfaceHigh, border: "1px solid " + T.border, borderRadius: T.radius, padding: "16px 20px" }}>
         <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Pricing Reference (varies by system count)</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, fontFamily: T.sans, fontSize: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, fontFamily: T.sans, fontSize: 12 }}>
           <div style={{ fontWeight: 700, color: T.textPrimary }}>&nbsp;</div>
           <div style={{ fontWeight: 700, color: T.textSec, textAlign: "center" }}>Core Seal</div>
           <div style={{ fontWeight: 700, color: T.textSec, textAlign: "center" }}>Performance</div>
-          <div style={{ fontWeight: 700, color: T.textSec, textAlign: "center" }}>Ultimate</div>
           {[1, 2, 3, 4].map(function(n) { return [
             <div key={"l"+n} style={{ color: T.textSec }}>{n} system{n > 1 ? "s" : ""}</div>,
             <div key={"c"+n} style={{ textAlign: "center", color: T.textPrimary }}>{fmt(getPackagePrice("coreSeal", n))}</div>,
             <div key={"p"+n} style={{ textAlign: "center", color: T.textPrimary }}>{fmt(getPackagePrice("performance", n))}</div>,
-            <div key={"u"+n} style={{ textAlign: "center", color: T.textPrimary }}>{fmt(getPackagePrice("ultimate", n))}</div>,
           ]; })}
         </div>
-        <div style={{ fontFamily: T.sans, fontSize: 11, color: T.textMuted, marginTop: 10 }}>Each system beyond 3 adds $500 to Core Seal / Performance and $700 to Ultimate.</div>
+        <div style={{ fontFamily: T.sans, fontSize: 11, color: T.textMuted, marginTop: 10 }}>Each system beyond 3 adds $500.</div>
       </div>
 
       <AerosealModule packageId={selectedPackageId} context="package" />
