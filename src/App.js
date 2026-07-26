@@ -58,9 +58,9 @@ const CONFIG = {
       price: 3000,
       badge: "Best place to start",
       includes: [
-        "Two-system core sealing package",
-        "Airflow optimization",
-        "Basic performance verification",
+        "Two-system Aeroseal duct sealing",
+        "Airflow balancing",
+        "Before/after leakage verification",
       ],
       includedAddons: [],
     },
@@ -71,30 +71,29 @@ const CONFIG = {
       badge: "Most Popular",
       includes: [
         "Everything in Core Seal",
-        "Duct cleaning",
-        "Boot sealing",
+        "Full duct system cleaning",
+        "Boot sealing at every register",
       ],
       includedAddons: ["ductCleaning", "bootSealing"],
     },
     ultimate: {
       id: "ultimate",
       name: "EG Comfort Ultimate",
-      price: 6995,
-      badge: "Premium Comfort + Control",
+      price: 5995,
+      badge: "Complete Duct System Overhaul",
       includes: [
         "Everything in Performance",
-        "2 smart thermostats",
-        "3 room sensors",
-        "2 upgraded 4-inch filter/plenum upgrades",
-        "Emporia energy monitor",
+        "4-inch filter / plenum upgrade (up to 2 systems)",
+        "Advanced pressure verification report",
+        "12-month comfort follow-up",
       ],
-      includedAddons: ["ductCleaning", "bootSealing", "emporiaMonitor", "thermostatPackage", "filterUpgrade"],
+      includedAddons: ["ductCleaning", "bootSealing", "filterUpgrade"],
     },
   },
 
   // ---- ADD-ON PRICING ENGINE ----
+  // Scoped to duct cleaning / sealing / airflow only.
   // Prices are computed dynamically from homeProfile inputs.
-  // basePrice here is the fallback only -- actual price flows through calculateAddonPrice().
   addons: {
     ductCleaning: {
       id: "ductCleaning", label: "Duct Cleaning", poolOnly: false, perSystem: false,
@@ -108,23 +107,6 @@ const CONFIG = {
       pricePerSystem: 299,
       minPrice: 299, maxPrice: 900,
     },
-    emporiaMonitor: {
-      id: "emporiaMonitor", label: "Emporia Energy Monitor", poolOnly: false, perSystem: false,
-      // 400 hardware + 200 install per panel
-      basePricePerPanel: 400, installPerPanel: 200,
-      minPricePerPanel: 500, maxPricePerPanel: 800,
-    },
-    thermostatPackage: {
-      id: "thermostatPackage", label: "Smart Thermostat Package", poolOnly: false, perSystem: false,
-      // Types: basic=350, advanced=550, premium=850
-      types: { basic: 350, advanced: 550, premium: 850 },
-      // Install: standard=150, complex=300
-      install: { standard: 150, complex: 300 },
-      sensorPrice: 85,
-      minPrice: 900, maxPrice: 2000,
-      // Default config shown in add-ons card before rep configures
-      defaultType: "advanced", defaultInstall: "standard", defaultSensors: 3,
-    },
     filterUpgrade: {
       id: "filterUpgrade", label: "4\" Filter / Plenum Upgrade", poolOnly: false, perSystem: true,
       pricePerSystem: 850,
@@ -132,27 +114,6 @@ const CONFIG = {
       complexityAdj: { standard: 0, difficult: 150, premium: 200 },
       defaultComplexity: "standard",
       minPrice: 850, maxPrice: 3000,
-    },
-    poolPump: {
-      id: "poolPump", label: "Variable-Speed Pool Pump", poolOnly: true, perSystem: false,
-      // Types: entry=1800, mid=2200, premium=2600
-      types: { entry: 1800, mid: 2200, premium: 2600 },
-      // Install: standard=600, complex=1000
-      install: { standard: 600, complex: 1000 },
-      // Pool size multipliers
-      sizeMultipliers: { small: 1.0, medium: 1.1, large: 1.2 },
-      minPrice: 2500, maxPrice: 3800,
-      // Default config
-      defaultType: "mid", defaultInstall: "standard", defaultPoolSize: "medium",
-    },
-    hvacReplacement: {
-      id: "hvacReplacement", label: "New HVAC System(s)", poolOnly: false, perSystem: false,
-      // Per-unit price by type: AC only, Furnace only, Heat Pump, Full System (AC + Furnace)
-      types: { ac: 5500, furnace: 5500, heatPump: 8500, fullSystem: 10500 },
-      // SEER tier multiplier
-      tierMultipliers: { standard: 1.0, high: 1.25, premium: 1.55 },
-      defaultType: "fullSystem", defaultTier: "high",
-      minPrice: 5000, maxPrice: 50000,
     },
   },
 
@@ -307,67 +268,40 @@ function getEraContextLine(era, yearBuilt, scoreInputs) {
   }
 }
 
-// Returns era-based weight adjustments to apply to each recommendation.
+// Returns era-based weight adjustments to apply to each duct rec.
 // Positive = boost the weight. Negative = reduce the weight.
 // IMPORTANT: symptom signals always add on top of these.
 function getEraWeightAdjustments(era, scoreInputs) {
   var si = scoreInputs;
-  var hasComfort = si.comfort !== "fine";
-  var hasAirflow = si.airflow !== "fine";
-  var hasBills   = si.bills !== "normal";
-  var hasGas     = si.bills !== "normal"; // proxy for gas pressure
+  var hasAirflow    = si.airflow !== "fine";
   var alreadySealed = si.alreadySealed === true;
 
-  // Base adjustments keyed by recommendation ID
-  var adj = {
-    ductSealing:     0,
-    smartThermostat: 0,
-    roomSensors:     0,
-    energyMonitor:   0,
-    filterUpgrade:   0,
-    atticInsulation: 0, // carried through to explanation only for now
-  };
+  var adj = { ductSealing: 0, bootSealing: 0, ductCleaning: 0, filterUpgrade: 0 };
 
   switch(era) {
     case "A":
-      // Strong era boost for duct sealing and thermostat
-      adj.ductSealing     += alreadySealed ? -1 : 3;
-      adj.smartThermostat += 2;
-      adj.roomSensors     += 1;
-      adj.filterUpgrade   += 1;
-      adj.atticInsulation += 3; // for context line only
+      adj.ductSealing   += alreadySealed ? -1 : 3;
+      adj.bootSealing   += 2;
+      adj.ductCleaning  += 2;
+      adj.filterUpgrade += 1;
       break;
     case "B":
-      adj.ductSealing     += alreadySealed ? -1 : 2;
-      adj.smartThermostat += 2;
-      adj.roomSensors     += 1;
-      adj.atticInsulation += 2;
+      adj.ductSealing   += alreadySealed ? -1 : 2;
+      adj.bootSealing   += 1;
+      adj.ductCleaning  += 1;
       break;
     case "C":
-      adj.ductSealing     += alreadySealed ? -1 : 2;
-      adj.smartThermostat += 1;
-      adj.roomSensors     += (hasComfort || hasAirflow) ? 2 : 1;
-      adj.atticInsulation += 1;
+      adj.ductSealing   += alreadySealed ? -1 : 2;
+      adj.bootSealing   += 1;
       break;
     case "D":
-      adj.ductSealing     += alreadySealed ? -2 : (hasAirflow ? 1 : 0);
-      adj.smartThermostat += 1;
-      adj.roomSensors     += hasComfort ? 2 : 1;
-      adj.energyMonitor   += 1;
+      adj.ductSealing   += alreadySealed ? -2 : (hasAirflow ? 1 : 0);
       break;
     case "E":
-      // Newer home: shift emphasis to balancing/sensors/controls
-      adj.ductSealing     += alreadySealed ? -2 : (hasAirflow ? 0 : -1);
-      adj.smartThermostat += si.thermostatType === "smart" ? -1 : 1;
-      adj.roomSensors     += hasComfort ? 3 : 1;
-      adj.energyMonitor   += 2;
+      adj.ductSealing   += alreadySealed ? -2 : (hasAirflow ? 0 : -1);
       break;
     case "F":
-      // Newest: only symptom-driven, era itself does not boost duct sealing
-      adj.ductSealing     += alreadySealed ? -3 : (hasAirflow ? 0 : -2);
-      adj.roomSensors     += hasComfort ? 3 : 0;
-      adj.energyMonitor   += 2;
-      adj.smartThermostat += si.thermostatType === "smart" ? -2 : 0;
+      adj.ductSealing   += alreadySealed ? -3 : (hasAirflow ? 0 : -2);
       break;
     default:
       break;
@@ -376,53 +310,43 @@ function getEraWeightAdjustments(era, scoreInputs) {
 }
 
 // ============================================================
-// EFFICIENCY SCORE ENGINE
+// EFFICIENCY SCORE ENGINE -- scoped to duct-performance signals
 // ============================================================
 function calculateEfficiencyScore(inputs) {
   var score = 100;
 
-  // Comfort issues
-  if (inputs.comfort === "some")  score -= 10;
-  if (inputs.comfort === "major") score -= 20;
+  // Comfort issues -- direct signal of airflow imbalance
+  if (inputs.comfort === "some")  score -= 12;
+  if (inputs.comfort === "major") score -= 24;
 
   // Energy bills
   if (inputs.bills === "slightly") score -= 10;
-  if (inputs.bills === "much")     score -= 20;
+  if (inputs.bills === "much")     score -= 22;
 
-  // Airflow
-  if (inputs.airflow === "weak")      score -= 10;
-  if (inputs.airflow === "veryWeak")  score -= 20;
+  // Airflow -- primary duct-performance signal
+  if (inputs.airflow === "weak")      score -= 14;
+  if (inputs.airflow === "veryWeak")  score -= 26;
 
-  // Runtime
+  // Runtime -- long cycles often mean leaky delivery
   if (inputs.runtime === "long")     score -= 10;
   if (inputs.runtime === "neverOff") score -= 20;
 
-  // Upgrades
+  // Prior duct/efficiency work
   if (inputs.upgrades === "none") score -= 15;
 
-  // Dust
-  if (inputs.dust === "some")   score -= 5;
-  if (inputs.dust === "severe") score -= 10;
+  // Dust -- often a signal of leaky return ducts pulling in attic air
+  if (inputs.dust === "some")   score -= 6;
+  if (inputs.dust === "severe") score -= 12;
 
-  // Unused rooms
+  // Unused rooms with vents open -- airflow balance issue
   if (inputs.unusedRooms === "occasional") score -= 5;
   if (inputs.unusedRooms === "multiple")   score -= 10;
 
-  // Thermostat
-  if (inputs.hasThermostat === false) score -= 8;
-
-  // Sensors
-  if (inputs.sensors === "oneTwo") score -= 5;
-  if (inputs.sensors === "none")   score -= 10;
-
-  // Monitoring
-  if (inputs.hasMonitoring === false) score -= 8;
-
-  // HVAC age
-  if (inputs.hvacAge === "5to10") score -= 5;
+  // HVAC age -- older systems often paired with older, leakier ducts
+  if (inputs.hvacAge === "5to10")  score -= 5;
   if (inputs.hvacAge === "10plus") score -= 10;
 
-  // Home era baseline penalty (probability-based, overridden by known upgrades)
+  // Home era baseline penalty
   var era = getHomeEra(inputs.yearBuilt || 0);
   score -= getEraScorePenalty(era.era, inputs);
 
@@ -465,14 +389,12 @@ function getTopIssues(inputs) {
 
 function getRecommendations(inputs) {
   var recs = [];
-  // Priority order per spec
-  if (inputs.airflow !== "fine")          recs.push({ priority: 1, label: "Duct Sealing (Airflow)", note: "Primary driver of comfort and efficiency loss." });
-  if (!inputs.hasThermostat)              recs.push({ priority: 2, label: "Smart Thermostat",        note: "Precise control reduces unnecessary runtime." });
-  if (inputs.sensors === "none" || inputs.sensors === "oneTwo")
-                                          recs.push({ priority: 3, label: "Room Sensors",            note: "Identify hot and cold zones accurately." });
-  if (!inputs.hasMonitoring)              recs.push({ priority: 4, label: "Energy Monitoring",       note: "Real-time visibility into consumption patterns." });
-  if (inputs.hvacAge === "10plus")        recs.push({ priority: 5, label: "System Health Check",     note: "Aging equipment benefits from a full assessment." });
-  return recs.slice(0, 5);
+  if (inputs.airflow !== "fine")   recs.push({ priority: 1, label: "Duct Sealing (Airflow)", note: "Primary driver of comfort and efficiency loss." });
+  if (inputs.dust !== "none")      recs.push({ priority: 2, label: "Duct Cleaning",          note: "Removes accumulated dust from the delivery system." });
+  if (inputs.airflow !== "fine")   recs.push({ priority: 3, label: "Boot Sealing",           note: "Seals the last few feet of the duct at each register." });
+  if (inputs.dust === "severe" || inputs.hvacAge === "10plus")
+                                   recs.push({ priority: 4, label: "Filter / Plenum Upgrade", note: "Restores airflow and improves filtration." });
+  return recs.slice(0, 4);
 }
 
 // ============================================================
@@ -482,24 +404,17 @@ function getRecommendations(inputs) {
 // All outputs are ranges -- never fake-precise single numbers.
 // ============================================================
 
-// Upgrade impact catalog
+// Upgrade impact catalog -- scoped to duct services only
 // savingsLow/High = % of HVAC-related annual spend
 // scoreLow/High   = points added to efficiency score
 //
-// Recalibrated against real EG Comfort customer data: 3,700 sqft TX
-// home with pool that received sealing + smart thermostat + sensors +
-// plenum upgrade + variable-speed pool pump achieved ~45-55% reduction
-// of HVAC-related annual spend (electric + gas combined).
+// Calibrated against real EG Comfort customer outcomes for the duct
+// sealing + boot sealing + cleaning + filter upgrade stack.
 var UPGRADE_IMPACTS = {
-  ductSealing:       { savingsLow: 0.12, savingsHigh: 0.25, scoreLow: 6,  scoreHigh: 15, label: "Duct Sealing / Airflow Correction" },
-  smartThermostat:   { savingsLow: 0.04, savingsHigh: 0.10, scoreLow: 3,  scoreHigh: 6,  label: "Smart Thermostat" },
-  roomSensors:       { savingsLow: 0.03, savingsHigh: 0.07, scoreLow: 2,  scoreHigh: 5,  label: "Room Sensors" },
-  filterUpgrade:     { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1,  scoreHigh: 3,  label: "Filter / Plenum Upgrade" },
-  energyMonitor:     { savingsLow: 0.01, savingsHigh: 0.05, scoreLow: 1,  scoreHigh: 4,  label: "Energy Monitor" },
-  bootSealing:       { savingsLow: 0.03, savingsHigh: 0.08, scoreLow: 2,  scoreHigh: 5,  label: "Boot Sealing" },
-  ductCleaning:      { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1,  scoreHigh: 3,  label: "Duct Cleaning" },
-  poolPump:          { savingsLow: 0.05, savingsHigh: 0.13, scoreLow: 2,  scoreHigh: 6,  label: "Variable-Speed Pool Pump" },
-  hvacReplacement:   { savingsLow: 0.20, savingsHigh: 0.35, scoreLow: 12, scoreHigh: 22, label: "New HVAC System(s)" },
+  ductSealing:   { savingsLow: 0.12, savingsHigh: 0.25, scoreLow: 6, scoreHigh: 15, label: "Duct Sealing / Airflow Correction" },
+  bootSealing:   { savingsLow: 0.03, savingsHigh: 0.08, scoreLow: 2, scoreHigh: 5,  label: "Boot Sealing" },
+  ductCleaning:  { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1, scoreHigh: 3,  label: "Duct Cleaning" },
+  filterUpgrade: { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1, scoreHigh: 3,  label: "Filter / Plenum Upgrade" },
 };
 
 // Map package/addon IDs to upgrade impact keys
@@ -514,19 +429,12 @@ function getUpgradesForSelection(packageId, addons) {
     upgrades.push("bootSealing");
   }
   if (packageId === "ultimate") {
-    upgrades.push("smartThermostat");
-    upgrades.push("roomSensors");
     upgrades.push("filterUpgrade");
-    upgrades.push("energyMonitor");
   }
   // Active add-ons not already in package
-  if (addons.thermostatPackage && upgrades.indexOf("smartThermostat") === -1) upgrades.push("smartThermostat");
-  if (addons.emporiaMonitor    && upgrades.indexOf("energyMonitor")    === -1) upgrades.push("energyMonitor");
-  if (addons.filterUpgrade     && upgrades.indexOf("filterUpgrade")    === -1) upgrades.push("filterUpgrade");
-  if (addons.bootSealing       && upgrades.indexOf("bootSealing")      === -1) upgrades.push("bootSealing");
-  if (addons.ductCleaning      && upgrades.indexOf("ductCleaning")     === -1) upgrades.push("ductCleaning");
-  if (addons.poolPump          && upgrades.indexOf("poolPump")         === -1) upgrades.push("poolPump");
-  if (addons.hvacReplacement   && upgrades.indexOf("hvacReplacement")  === -1) upgrades.push("hvacReplacement");
+  if (addons.filterUpgrade && upgrades.indexOf("filterUpgrade") === -1) upgrades.push("filterUpgrade");
+  if (addons.bootSealing   && upgrades.indexOf("bootSealing")   === -1) upgrades.push("bootSealing");
+  if (addons.ductCleaning  && upgrades.indexOf("ductCleaning")  === -1) upgrades.push("ductCleaning");
   return upgrades;
 }
 
@@ -582,15 +490,14 @@ function calculateSavingsProjection(score, homeProfile, scoreInputs, packageId, 
   // Upgrade savings with diminishing returns
   var upgrades = getUpgradesForSelection(packageId, addons);
 
-  // Group overlapping categories for diminishing returns
-  var controlGroup = ["smartThermostat", "roomSensors"];     // control/scheduling overlap
-  var airflowGroup = ["ductSealing", "bootSealing", "ductCleaning", "filterUpgrade"]; // delivery overlap
+  // Diminishing returns group -- all four duct upgrades share the same
+  // delivery system, so stacking has decreasing marginal return
+  var airflowGroup = ["ductSealing", "bootSealing", "ductCleaning", "filterUpgrade"];
 
   var savingsLowTotal  = 0;
   var savingsHighTotal = 0;
   var scoreLowTotal    = 0;
   var scoreHighTotal   = 0;
-  var controlCount     = 0;
   var airflowCount     = 0;
   var upgradeDetails   = [];
 
@@ -599,13 +506,7 @@ function calculateSavingsProjection(score, homeProfile, scoreInputs, packageId, 
     if (!u) return;
 
     var multiplier = 1.0;
-    // Apply diminishing returns within groups (less aggressive --
-    // real-world data shows stacked upgrades retain more value)
-    if (controlGroup.indexOf(uid) > -1) {
-      controlCount++;
-      if (controlCount === 2) multiplier = 0.7;
-      if (controlCount >= 3) multiplier = 0.5;
-    }
+    // Apply diminishing returns within the duct-services group
     if (airflowGroup.indexOf(uid) > -1) {
       airflowCount++;
       if (airflowCount === 2) multiplier = 0.75;
@@ -688,15 +589,10 @@ function getUtilitySplit(scoreInputs) {
 
 // How much of each upgrade's savings goes to electric vs gas
 var UPGRADE_UTILITY_SPLIT = {
-  ductSealing:     { e: 0.50, g: 0.50 }, // affects both equally -- leakage in both seasons
-  smartThermostat: { e: 0.50, g: 0.50 }, // schedules both heating and cooling
-  roomSensors:     { e: 0.50, g: 0.50 }, // balance affects both seasons
-  filterUpgrade:   { e: 0.60, g: 0.40 }, // slightly more cooling-side impact
-  energyMonitor:   { e: 0.70, g: 0.30 }, // more behavioral on electric side
-  bootSealing:     { e: 0.50, g: 0.50 },
-  ductCleaning:    { e: 0.55, g: 0.45 },
-  poolPump:        { e: 1.00, g: 0.00 }, // pool pump is electric only
-  hvacReplacement: { e: 0.55, g: 0.45 }, // balanced — actual split varies by system type
+  ductSealing:   { e: 0.50, g: 0.50 }, // affects both equally -- leakage in both seasons
+  bootSealing:   { e: 0.50, g: 0.50 },
+  ductCleaning:  { e: 0.55, g: 0.45 },
+  filterUpgrade: { e: 0.60, g: 0.40 }, // slightly more cooling-side impact
 };
 
 function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId, addons) {
@@ -739,8 +635,7 @@ function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId,
 
   // Upgrade savings split by utility
   var upgrades = getUpgradesForSelection(packageId, addons);
-  var controlCount = 0; var airflowCount = 0;
-  var controlGroup = ["smartThermostat", "roomSensors"];
+  var airflowCount = 0;
   var airflowGroup = ["ductSealing", "bootSealing", "ductCleaning", "filterUpgrade"];
 
   var elecSavLow = 0; var elecSavHigh = 0;
@@ -752,7 +647,6 @@ function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId,
     var us = UPGRADE_UTILITY_SPLIT[uid] || { e: 0.5, g: 0.5 };
     if (!u) return;
     var mult = 1.0;
-    if (controlGroup.indexOf(uid) > -1) { controlCount++; if (controlCount === 2) mult = 0.7; if (controlCount >= 3) mult = 0.5; }
     if (airflowGroup.indexOf(uid) > -1) {
       airflowCount++;
       if (airflowCount === 2) mult = 0.75;
@@ -849,81 +743,50 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
     });
   }
 
-  // 2. Smart Thermostat
-  var tstatWeight = 0;
-  if (si.hasThermostat === false) tstatWeight += 4;
-  if (si.thermostatType === "basic" || si.thermostatType === "manual") tstatWeight += 3;
-  if (si.runtime === "long" || si.runtime === "neverOff") tstatWeight += 2;
-  if (si.bills === "much" || si.bills === "slightly") tstatWeight += 1;
-  if (si.hasThermostat === true && si.thermostatType === "smart") tstatWeight -= 3;
-  tstatWeight += eraAdj.smartThermostat; // era-based boost
-  if (tstatWeight >= 2) {
-    var tconf = tstatWeight >= 5 ? "Strong Match" : tstatWeight >= 3 ? "Likely Helpful" : "Optional";
-    var tstatWhy;
-    if (si.hasThermostat === false) {
-      tstatWhy = "Without a smart thermostat, the system likely runs at full demand even when it does not need to -- particularly overnight and during unoccupied periods.";
-    } else if (era.era === "A" || era.era === "B") {
-      tstatWhy = "Older homes with basic or manual thermostats tend to lose meaningful energy through poor scheduling and lack of setback control. A modern thermostat is one of the faster payback improvements available here.";
-    } else {
-      tstatWhy = "A thermostat upgrade could reduce unnecessary runtime and give the homeowner better visibility into usage patterns.";
-    }
+  // 2. Boot Sealing -- addresses the register-boot connection leaks
+  var bootWeight = 0;
+  if (si.airflow === "weak" || si.airflow === "veryWeak") bootWeight += 2;
+  if (si.comfort === "some" || si.comfort === "major")    bootWeight += 1;
+  if (si.dust    === "some" || si.dust    === "severe")   bootWeight += 1;
+  if (si.upgrades === "none")                              bootWeight += 1;
+  bootWeight += eraAdj.bootSealing || 0;
+  if (bootWeight >= 2) {
     recs.push({
-      id: "smartThermostat", priority: 2, confidence: tconf, weight: tstatWeight,
-      name: "Smart Thermostat",
-      what: "Automates temperature scheduling, setbacks during unoccupied hours, and remote control from a phone or app.",
-      why: tstatWhy,
-      impact: { comfort: "Moderate", control: "High", electric: "Moderate", gas: hasGas ? "Moderate" : "Low" },
-      detail: "Smart thermostats learn usage patterns and optimize cycles across heating and cooling seasons. The impact on gas tends to be meaningful in homes where furnace runtime is longer than necessary.",
+      id: "bootSealing", priority: 2,
+      confidence: bootWeight >= 4 ? "Strong Match" : "Likely Helpful", weight: bootWeight,
+      name: "Boot Sealing",
+      what: "Seals the connection between each duct branch and the register boot, where a large share of duct leakage typically hides.",
+      why: si.dust !== "fine"
+        ? "Register boots are one of the most common leak points. Air escapes through gaps here and also draws unconditioned air from the ceiling/floor cavity, which then shows up as dust and reduced airflow at the register."
+        : "Even in newer homes, the boot-to-register seal degrades over time. Correcting these is a low-cost, high-return step that complements the main duct sealing.",
+      impact: { comfort: "High", control: "Low", electric: hasElec ? "Moderate" : "Low", gas: hasGas ? "Moderate" : "Low" },
+      detail: "Boot sealing focuses on the last few feet of the duct system -- the transition from the trunk line to each register. These joints often leak significantly because they sit inside ceiling and floor cavities that are hard to inspect. Sealing them typically improves per-register airflow noticeably.",
     });
   }
 
-  // 3. Room Sensors
-  var sensWeight = 0;
-  if (si.sensors === "none") sensWeight += 3;
-  if (si.sensors === "oneTwo") sensWeight += 1;
-  if (si.comfort === "major" || si.unusedRooms === "multiple") sensWeight += 2;
-  if (si.airflow === "weak" || si.airflow === "veryWeak") sensWeight += 1;
-  sensWeight += eraAdj.roomSensors; // newer homes get a boost when comfort issues exist
-  if (sensWeight >= 2) {
-    var sconf = sensWeight >= 5 ? "Strong Match" : sensWeight >= 3 ? "Likely Helpful" : "Optional";
-    var sensWhy;
-    if (era.era === "E" || era.era === "F") {
-      sensWhy = "In a newer home like this, room-level comfort issues are more often about sensor gaps and control strategy than about the envelope. Sensors are typically a high-value fix in this era.";
-    } else if (si.comfort !== "fine") {
-      sensWhy = "Hot and cold spots between rooms typically indicate airflow imbalance. Sensors help identify which areas are underserved and give the control system better data.";
-    } else {
-      sensWhy = "Adding sensors to a home with multiple systems or unused zones can meaningfully improve temperature distribution.";
-    }
+  // 3. Duct Cleaning
+  var cleanWeight = 0;
+  if (si.dust === "severe") cleanWeight += 3;
+  if (si.dust === "some")   cleanWeight += 1;
+  if (si.hvacAge === "10plus") cleanWeight += 1;
+  if (si.hvacAge === "5to10")  cleanWeight += 1;
+  if (si.upgrades === "none")  cleanWeight += 1;
+  cleanWeight += eraAdj.ductCleaning || 0;
+  if (cleanWeight >= 2) {
     recs.push({
-      id: "roomSensors", priority: 3, confidence: sconf, weight: sensWeight,
-      name: "Room Sensors",
-      what: "Measures actual temperature in multiple zones and reports imbalances to the thermostat for more accurate control.",
-      why: sensWhy,
-      impact: { comfort: "High", control: "High", electric: "Moderate", gas: "Low" },
-      detail: "Room sensors work alongside a smart thermostat to average temperatures across occupied zones rather than relying on a single wall unit. They are especially effective in multi-story or multi-system homes.",
+      id: "ductCleaning", priority: 3,
+      confidence: cleanWeight >= 4 ? "Strong Match" : "Likely Helpful", weight: cleanWeight,
+      name: "Duct Cleaning",
+      what: "Removes accumulated dust, allergens, and construction debris from the entire duct system before it's re-sealed and re-verified.",
+      why: si.dust === "severe"
+        ? "Heavy dust accumulation in the ducts reduces airflow, pushes allergens back into the home, and provides a poor surface for sealing to bond to. Cleaning first makes every downstream improvement more effective."
+        : "Cleaning the interior of the duct system removes years of accumulated debris and restores full cross-sectional airflow. It is also a prerequisite for the sealing process to bond properly.",
+      impact: { comfort: "Moderate", control: "Low", electric: "Moderate", gas: "Moderate" },
+      detail: "Duct cleaning uses high-pressure air and mechanical agitation to lift dust, pet dander, construction debris, and biological growth from the interior of the duct system. In homes with pets, recent renovations, or ducts that have never been serviced, this is often the single most immediately noticeable improvement in air quality.",
     });
   }
 
-  // 4. Energy Monitor
-  var monWeight = 0;
-  if (si.hasMonitoring === false) monWeight += 2;
-  if (si.bills === "much") monWeight += 2;
-  if (si.bills === "slightly") monWeight += 1;
-  monWeight += eraAdj.energyMonitor; // newer homes benefit more from visibility
-  if (monWeight >= 2) {
-    recs.push({
-      id: "energyMonitor", priority: 4, confidence: "Likely Helpful", weight: monWeight,
-      name: "Whole-Home Energy Monitor",
-      what: "Tracks energy consumption in real time at the circuit level, identifying patterns and unusual usage spikes.",
-      why: si.bills === "much"
-        ? "When bills are running higher than expected and the cause is unclear, monitoring tools can pinpoint which systems or circuits are driving the excess."
-        : "A monitoring system gives the homeowner ongoing visibility so improvements can be measured and sustained over time.",
-      impact: { comfort: "Low", control: "High", electric: "Moderate", gas: "Low" },
-      detail: "Energy monitoring is primarily a visibility and behavioral tool rather than a direct mechanical improvement. Typical savings come from identifying standby loads, inefficient cycles, and usage patterns that can be changed.",
-    });
-  }
-
-  // 5. Filter / Airflow
+  // 4. Filter / Airflow
   var filterWeight = 0;
   if (si.dust === "severe") filterWeight += 3;
   if (si.dust === "some") filterWeight += 1;
@@ -932,58 +795,24 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
   filterWeight += eraAdj.filterUpgrade;
   if (filterWeight >= 2) {
     recs.push({
-      id: "filterUpgrade", priority: 5, confidence: filterWeight >= 3 ? "Strong Match" : "Likely Helpful", weight: filterWeight,
-      name: "Filter and Airflow Upgrade",
-      what: "Replaces restrictive or undersized filter assemblies with higher-flow configurations to reduce strain on the air handler.",
+      id: "filterUpgrade", priority: 4, confidence: filterWeight >= 3 ? "Strong Match" : "Likely Helpful", weight: filterWeight,
+      name: "Filter / Plenum Upgrade",
+      what: "Replaces restrictive or undersized filter assemblies with 4-inch media cabinets sized properly for the system's airflow requirements.",
       why: si.dust === "severe"
-        ? "Severe dust accumulation often indicates a combination of poor filtration and duct leakage. Correcting the filter assembly reduces system strain and improves air quality."
-        : "Improving filtration and filter sizing can restore airflow that has gradually degraded over time.",
+        ? "Severe dust accumulation often indicates a combination of poor filtration and duct leakage. Upsizing the filter assembly reduces system strain and captures more particulate before it circulates."
+        : "Upgrading to a 4-inch filter with the right media rating dramatically improves filtration life and reduces the pressure drop the blower has to work against.",
       impact: { comfort: "Moderate", control: "Low", electric: "Moderate", gas: "Moderate" },
-      detail: "Restrictive filters force the air handler to work harder, increasing energy consumption without improving air quality. Proper sizing and media selection balances filtration performance with airflow efficiency.",
+      detail: "Standard 1-inch filters restrict airflow when loaded, forcing the air handler to work harder. A properly sized 4-inch filter cabinet holds substantially more media, filters more effectively (MERV 11-13 typical), and requires less frequent changes -- reducing strain on the system while improving indoor air quality.",
     });
   }
 
-  // 6. New HVAC System(s) -- highest-impact but also highest-cost upgrade.
-  // Recommended only when there are strong signals (aging equipment +
-  // performance issues), since the investment is significant.
-  var hvacWeight = 0;
-  if (si.hvacAge === "10plus")    hvacWeight += 4;
-  if (si.runtime === "neverOff")  hvacWeight += 2;
-  if (si.runtime === "long")      hvacWeight += 1;
-  if (si.bills === "much")        hvacWeight += 2;
-  if (si.comfort === "major")     hvacWeight += 1;
-  // Higher threshold than other recs -- only surface when the case is real
-  if (hvacWeight >= 5) {
-    var hconf = hvacWeight >= 9 ? "Strong Match" : hvacWeight >= 7 ? "Likely Helpful" : "Consider";
-    var hvacWhy;
-    if (si.hvacAge === "10plus" && (si.runtime === "neverOff" || si.bills === "much")) {
-      hvacWhy = "Equipment over 10 years old combined with the performance signals reported here suggests replacement may be more cost-effective than continuing to operate aging units. Often qualifies for utility rebates and federal tax credits that can offset 10-30% of the cost.";
-    } else if (si.hvacAge === "10plus") {
-      hvacWhy = "HVAC equipment over 10 years old typically operates at 60-75% of the efficiency of modern systems. Worth pricing out if you're planning major upgrades anyway -- often qualifies for utility rebates and federal tax credits.";
-    } else {
-      hvacWhy = "Worth pricing out if other improvements alone do not deliver enough relief. Should be considered alongside, not instead of, sealing and control upgrades, which have much faster paybacks.";
-    }
-    recs.push({
-      id: "hvacReplacement", priority: 6, confidence: hconf, weight: hvacWeight,
-      name: "New HVAC System(s)",
-      what: "Replace aging HVAC equipment with modern high-efficiency systems (SEER 16-22) that use 30-50% less energy.",
-      why: hvacWhy,
-      impact: { comfort: "High", control: "Moderate", electric: "High", gas: "High" },
-      detail: "Modern equipment carries SEER ratings of 16-22 vs 8-12 for systems 10+ years old. Combined with proper duct sealing, this delivers the largest single improvement available -- typically 20-35% reduction in HVAC-related energy spend. However, the upfront cost is significantly higher than other improvements, so it makes the most sense paired with rebates/tax credits or when the existing equipment is near end-of-life.",
-      cost: "$5,500 – $50,000+",
-      costNote: "Major investment. Ranges from a single AC ($5,500) to four premium full systems ($42,000+). May qualify for utility rebates and federal tax credits.",
-      costTone: "warning",
-    });
-  }
-
-  // Attach cost info to all other recs (HVAC already has its own above)
+  // Attach cost info to each rec so the card can display it
   recs.forEach(function(r) {
     if (r.cost) return;
-    if (r.id === "ductSealing")     { r.cost = "Included";          r.costNote = "Bundled in every EG Comfort package -- no add-on cost."; }
-    if (r.id === "smartThermostat") { r.cost = "$900 – $2,000";     r.costNote = "Per system, depending on thermostat tier and install complexity."; }
-    if (r.id === "roomSensors")     { r.cost = "$255 – $425";       r.costNote = "$85 per sensor; typical install is 3-5 sensors."; }
-    if (r.id === "energyMonitor")   { r.cost = "$600 – $1,800";     r.costNote = "$600 per electrical panel (hardware + install)."; }
-    if (r.id === "filterUpgrade")   { r.cost = "$850 – $3,000";     r.costNote = "Per system, depending on cabinet complexity."; }
+    if (r.id === "ductSealing")   { r.cost = "Included";      r.costNote = "Bundled in every EG Comfort package."; }
+    if (r.id === "bootSealing")   { r.cost = "$299 – $900";   r.costNote = "$299 per system, capped at $900."; }
+    if (r.id === "ductCleaning")  { r.cost = "$650 – $1,200"; r.costNote = "Scales with home size (small / medium / large)."; }
+    if (r.id === "filterUpgrade") { r.cost = "$850 – $3,000"; r.costNote = "Per system, depending on cabinet complexity."; }
   });
 
   // Sort by weight descending
@@ -991,43 +820,39 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
   return recs;
 }
 
-// Sub-scores for heating / cooling / control efficiency
+// Sub-scores for delivery / airflow / air quality (duct-focused)
 function calculateSubScores(scoreInputs) {
-  var heating = 100;
-  var cooling = 100;
-  var control = 100;
+  var delivery = 100;  // how well conditioned air reaches rooms
+  var airflow  = 100;  // pressure balance + register flow
+  var quality  = 100;  // dust / filtration / return integrity
 
-  // Heating sub-score
-  if (scoreInputs.airflow === "veryWeak") heating -= 25;
-  if (scoreInputs.airflow === "weak")     heating -= 12;
-  if (scoreInputs.runtime === "neverOff") heating -= 20;
-  if (scoreInputs.runtime === "long")     heating -= 10;
-  if (scoreInputs.hvacAge === "10plus")   heating -= 15;
-  if (scoreInputs.hvacAge === "5to10")    heating -= 7;
-  if (scoreInputs.upgrades === "none")    heating -= 10;
+  // Delivery -- runtime and comfort signals point to leakage/loss
+  if (scoreInputs.runtime === "neverOff") delivery -= 22;
+  if (scoreInputs.runtime === "long")     delivery -= 12;
+  if (scoreInputs.comfort === "major")    delivery -= 18;
+  if (scoreInputs.comfort === "some")     delivery -= 9;
+  if (scoreInputs.bills === "much")       delivery -= 10;
+  if (scoreInputs.bills === "slightly")   delivery -= 5;
+  if (scoreInputs.hvacAge === "10plus")   delivery -= 8;
 
-  // Cooling sub-score
-  if (scoreInputs.comfort === "major")    cooling -= 20;
-  if (scoreInputs.comfort === "some")     cooling -= 10;
-  if (scoreInputs.unusedRooms === "multiple")  cooling -= 10;
-  if (scoreInputs.unusedRooms === "occasional") cooling -= 5;
-  if (scoreInputs.airflow === "veryWeak") cooling -= 20;
-  if (scoreInputs.airflow === "weak")     cooling -= 10;
-  if (scoreInputs.bills === "much")       cooling -= 10;
-  if (scoreInputs.bills === "slightly")   cooling -= 5;
+  // Airflow -- direct signals of balance / register issues
+  if (scoreInputs.airflow === "veryWeak")       airflow -= 30;
+  if (scoreInputs.airflow === "weak")           airflow -= 15;
+  if (scoreInputs.unusedRooms === "multiple")   airflow -= 12;
+  if (scoreInputs.unusedRooms === "occasional") airflow -= 6;
+  if (scoreInputs.comfort === "major")          airflow -= 12;
+  if (scoreInputs.comfort === "some")           airflow -= 6;
 
-  // Control sub-score
-  if (scoreInputs.hasThermostat === false)  control -= 20;
-  if (scoreInputs.sensors === "none")       control -= 20;
-  if (scoreInputs.sensors === "oneTwo")     control -= 10;
-  if (scoreInputs.hasMonitoring === false)  control -= 15;
-  if (scoreInputs.thermostatType === "manual") control -= 10;
-  if (scoreInputs.thermostatType === "basic")  control -= 5;
+  // Air quality -- dust + return-side integrity
+  if (scoreInputs.dust === "severe")   quality -= 25;
+  if (scoreInputs.dust === "some")     quality -= 12;
+  if (scoreInputs.upgrades === "none") quality -= 8;
+  if (scoreInputs.hvacAge === "10plus") quality -= 6;
 
   return {
-    heating: Math.max(0, Math.min(100, heating)),
-    cooling: Math.max(0, Math.min(100, cooling)),
-    control: Math.max(0, Math.min(100, control)),
+    delivery: Math.max(0, Math.min(100, delivery)),
+    airflow:  Math.max(0, Math.min(100, airflow)),
+    quality:  Math.max(0, Math.min(100, quality)),
   };
 }
 
@@ -1035,9 +860,9 @@ function calculateSubScores(scoreInputs) {
 function getLiveExplanation(score, scoreInputs, homeProfile) {
   var issues = [];
   if (scoreInputs.airflow !== "fine") issues.push("airflow imbalance");
-  if (!scoreInputs.hasThermostat)     issues.push("limited scheduling control");
   if (scoreInputs.runtime === "neverOff" || scoreInputs.runtime === "long") issues.push("excessive system runtime");
   if (scoreInputs.comfort !== "fine") issues.push("inconsistent room temperatures");
+  if (scoreInputs.dust === "severe" || scoreInputs.dust === "some") issues.push("dust accumulation from duct leakage");
   if (scoreInputs.bills !== "normal") issues.push("above-expected utility costs");
 
   // Era context prepended when a year is known
@@ -1182,51 +1007,11 @@ function calculateAddonPrice(aid, homeProfile, addonConfigs) {
     return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
   }
 
-  if (aid === "emporiaMonitor") {
-    var panels = cfg.panelCount || 1;
-    var perPanel = a.basePricePerPanel + a.installPerPanel;
-    var raw = panels * perPanel;
-    return Math.round(Math.max(panels * a.minPricePerPanel, Math.min(panels * a.maxPricePerPanel, raw)));
-  }
-
-  if (aid === "thermostatPackage") {
-    var tType   = cfg.thermostatType   || a.defaultType;
-    var tInstall = cfg.thermostatInstall || a.defaultInstall;
-    var sensors  = (cfg.sensorCount != null) ? cfg.sensorCount : a.defaultSensors;
-    var tBase    = a.types[tType]    || a.types[a.defaultType];
-    var tInst    = a.install[tInstall] || a.install[a.defaultInstall];
-    var sysTotal = sys * (tBase + tInst);
-    var sensorTotal = sensors * a.sensorPrice;
-    var raw = sysTotal + sensorTotal;
-    return Math.max(a.minPrice, Math.min(a.maxPrice, Math.round(raw)));
-  }
-
   if (aid === "filterUpgrade") {
     var complexity = cfg.filterComplexity || a.defaultComplexity;
     var adj = a.complexityAdj[complexity] || 0;
     var raw = sys * (a.pricePerSystem + adj);
     return Math.max(a.minPrice, Math.min(a.maxPrice, Math.round(raw)));
-  }
-
-  if (aid === "poolPump") {
-    var pType   = cfg.pumpType    || a.defaultType;
-    var pInstall = cfg.pumpInstall  || a.defaultInstall;
-    var pSize    = cfg.poolSize     || a.defaultPoolSize;
-    var pBase    = a.types[pType]   || a.types[a.defaultType];
-    var pInst    = a.install[pInstall] || a.install[a.defaultInstall];
-    var pMult    = a.sizeMultipliers[pSize] || 1.0;
-    var raw = Math.round((pBase + pInst) * pMult);
-    return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
-  }
-
-  if (aid === "hvacReplacement") {
-    var hType  = cfg.hvacType  || a.defaultType;
-    var hTier  = cfg.hvacTier  || a.defaultTier;
-    var hCount = cfg.hvacCount != null ? cfg.hvacCount : sys;
-    var hBase  = a.types[hType] || a.types[a.defaultType];
-    var hMult  = a.tierMultipliers[hTier] || 1.0;
-    var raw    = Math.round(hBase * hMult * hCount);
-    return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
   }
 
   return 0;
@@ -1236,26 +1021,9 @@ function calculateAddonPrice(aid, homeProfile, addonConfigs) {
 function addonPrice(aid, sys) {
   var a = CONFIG.addons[aid];
   if (!a) return 0;
-  // Use default config values for a reasonable static fallback
-  if (aid === "bootSealing")     return (a.pricePerSystem || 299) * sys;
-  if (aid === "filterUpgrade")   return (a.pricePerSystem || 850) * sys;
-  if (aid === "ductCleaning")    return a.basePrice || 650;
-  if (aid === "emporiaMonitor")  return (a.basePricePerPanel + a.installPerPanel) || 600;
-  if (aid === "thermostatPackage") {
-    var tBase = a.types[a.defaultType] || 550;
-    var tInst = a.install[a.defaultInstall] || 150;
-    return Math.max(a.minPrice, sys * (tBase + tInst) + (a.defaultSensors * a.sensorPrice));
-  }
-  if (aid === "poolPump") {
-    var pBase = a.types[a.defaultType] || 2200;
-    var pInst = a.install[a.defaultInstall] || 600;
-    return Math.max(a.minPrice, Math.round((pBase + pInst) * (a.sizeMultipliers[a.defaultPoolSize] || 1.1)));
-  }
-  if (aid === "hvacReplacement") {
-    var hBase = a.types[a.defaultType] || 10500;
-    var hMult = a.tierMultipliers[a.defaultTier] || 1.25;
-    return Math.max(a.minPrice, Math.round(hBase * hMult * sys));
-  }
+  if (aid === "bootSealing")   return (a.pricePerSystem || 299) * sys;
+  if (aid === "filterUpgrade") return (a.pricePerSystem || 850) * sys;
+  if (aid === "ductCleaning")  return a.basePrice || 650;
   return 0;
 }
 
@@ -1272,30 +1040,23 @@ function subtotalPrice(pid, addons, sys) { return getBasePrice(pid) + addonTotal
 // orderItems = array of { id, type, label, unitPrice, qty, note }
 // ============================================================
 
-// Catalog of everything a rep can add to an order
+// Catalog of everything a rep can add to an order (duct-focused)
 var ORDER_CATALOG = [
   // Packages
-  { id: "pkg_coreSeal",    type: "package", label: "Core Seal Package",          unitPrice: 3000, category: "Packages",   defaultQty: 1 },
-  { id: "pkg_performance", type: "package", label: "Performance Package",         unitPrice: 4198, category: "Packages",   defaultQty: 1 },
-  { id: "pkg_ultimate",    type: "package", label: "Ultimate Package",            unitPrice: 6995, category: "Packages",   defaultQty: 1 },
-  // HVAC Systems / Furnaces
-  { id: "sys_furnace",     type: "system",  label: "Additional Furnace / System", unitPrice: 1200, category: "Systems",    defaultQty: 1, note: "Per additional HVAC system added to scope" },
-  { id: "sys_airhandler",  type: "system",  label: "Air Handler Unit",            unitPrice: 950,  category: "Systems",    defaultQty: 1 },
-  { id: "sys_heatpump",    type: "system",  label: "Heat Pump System",            unitPrice: 1100, category: "Systems",    defaultQty: 1 },
-  // Add-Ons
-  { id: "ao_ductClean",    type: "addon",   label: "Duct Cleaning",               unitPrice: 799,  category: "Add-Ons",   defaultQty: 1, note: "Adjust qty for multiple systems" },
-  { id: "ao_bootSeal",     type: "addon",   label: "Boot Sealing",                unitPrice: 299,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
-  { id: "ao_emporia",      type: "addon",   label: "Emporia Energy Monitor",      unitPrice: 649,  category: "Add-Ons",   defaultQty: 1 },
-  { id: "ao_thermostat",   type: "addon",   label: "Smart Thermostat Package",    unitPrice: 700,  category: "Add-Ons",   defaultQty: 1, note: "Per thermostat unit" },
+  { id: "pkg_coreSeal",    type: "package", label: "Core Seal Package",              unitPrice: 3000, category: "Packages",  defaultQty: 1 },
+  { id: "pkg_performance", type: "package", label: "Performance Package",            unitPrice: 4198, category: "Packages",  defaultQty: 1 },
+  { id: "pkg_ultimate",    type: "package", label: "Ultimate Package",               unitPrice: 5995, category: "Packages",  defaultQty: 1 },
+  // Duct Services (add-on)
+  { id: "ao_ductClean",    type: "addon",   label: "Duct Cleaning",                  unitPrice: 799,  category: "Add-Ons",   defaultQty: 1, note: "Adjust qty for multiple systems" },
+  { id: "ao_bootSeal",     type: "addon",   label: "Boot Sealing",                   unitPrice: 299,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
   { id: "ao_filter",       type: "addon",   label: "4-inch Filter / Plenum Upgrade", unitPrice: 895,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
-  { id: "ao_poolPump",     type: "addon",   label: "Variable-Speed Pool Pump",    unitPrice: 3195, category: "Add-Ons",   defaultQty: 1 },
-  { id: "ao_sensors",      type: "addon",   label: "Room Sensors (each)",         unitPrice: 85,   category: "Add-Ons",   defaultQty: 1 },
   // Service
-  { id: "svc_inspection",  type: "service", label: "Full System Inspection",      unitPrice: 0,    category: "Services",  defaultQty: 1, note: "Included with all packages" },
-  { id: "svc_custom",      type: "custom",  label: "Custom Line Item",            unitPrice: 0,    category: "Custom",    defaultQty: 1, note: "Enter description and price" },
+  { id: "svc_inspection",  type: "service", label: "Duct Performance Inspection",    unitPrice: 0,    category: "Services",  defaultQty: 1, note: "Included with all packages" },
+  { id: "svc_verify",      type: "service", label: "Post-Seal Verification Report",  unitPrice: 149,  category: "Services",  defaultQty: 1, note: "Written before/after leakage report" },
+  { id: "svc_custom",      type: "custom",  label: "Custom Line Item",               unitPrice: 0,    category: "Custom",    defaultQty: 1, note: "Enter description and price" },
 ];
 
-var ORDER_CATEGORIES = ["Packages", "Systems", "Add-Ons", "Services", "Custom"];
+var ORDER_CATEGORIES = ["Packages", "Add-Ons", "Services", "Custom"];
 
 function orderTotal(orderItems) {
   return orderItems.reduce(function(s, item) { return s + (item.unitPrice * item.qty); }, 0);
@@ -2028,18 +1789,6 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
               </div>
               <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>Affects how savings are split between electric and gas</div>
             </div>
-            <div style={{ marginBottom: 18 }}>
-              <label style={{ display: "block", fontFamily: T.sans, fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Current Thermostat</label>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[{ v: "smart", l: "Smart / App-connected" }, { v: "basic", l: "Programmable" }, { v: "manual", l: "Manual / Basic" }].map(function(o) {
-                  return Pill(o.l, (scoreInputs.thermostatType || "manual") === o.v, function() {
-                    setVal("thermostatType", o.v);
-                    setVal("hasThermostat", o.v === "smart");
-                  });
-                })}
-              </div>
-              <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>Older thermostats increase smart control opportunity</div>
-            </div>
             <div style={{ marginBottom: 8 }}>
               <label style={{ display: "block", fontFamily: T.sans, fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>HVAC System Age</label>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -2074,18 +1823,6 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                 </div>
               );
             })}
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 700, color: T.textSec, marginBottom: 8 }}>Room sensors installed?</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {[{ v: "multiple", l: "3+" }, { v: "oneTwo", l: "1-2" }, { v: "none", l: "None" }].map(function(o) { return Pill(o.l, scoreInputs.sensors === o.v, function() { setVal("sensors", o.v); }); })}
-              </div>
-            </div>
-            <div style={{ marginBottom: 0, marginTop: 16 }}>
-              <div style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 700, color: T.textSec, marginBottom: 8 }}>Whole-home energy monitoring?</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                {[{ v: true, l: "Yes" }, { v: false, l: "No" }].map(function(o) { return Pill(o.l, scoreInputs.hasMonitoring === o.v, function() { setVal("hasMonitoring", o.v); }); })}
-              </div>
-            </div>
           </div>
         </div>
 
@@ -2114,9 +1851,9 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                   <div style={{ width: score + "%", height: "100%", background: "linear-gradient(90deg, " + band.color + "88, " + band.color + ")", borderRadius: 99, transition: "width 0.5s ease" }} />
                 </div>
                 {/* Sub-scores */}
-                {SubMetric("Heating efficiency", subScores.heating, "#2F80ED")}
-                {SubMetric("Cooling efficiency", subScores.cooling, "#2BB3A3")}
-                {SubMetric("Control & comfort",  subScores.control, "#27D17F")}
+                {SubMetric("Delivery (air reaching rooms)", subScores.delivery, "#2F80ED")}
+                {SubMetric("Airflow balance",                subScores.airflow,  "#2BB3A3")}
+                {SubMetric("Air quality (dust / filtration)", subScores.quality, "#27D17F")}
               </div>
             </div>
             {/* Live explanation */}
@@ -2185,20 +1922,6 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                     {ImpactPill("Gas", rec.impact.gas)}
                   </div>
 
-                  {/* Cost-effectiveness alternative -- shown on HVAC rec to point
-                      to the sealing + boot combo as the higher-leverage entry point */}
-                  {rec.id === "hvacReplacement" && (function() {
-                    var perfPkg = CONFIG.packages.performance;
-                    if (!perfPkg) return null;
-                    return (
-                      <div style={{ marginTop: 14, background: T.accentLight, border: "1px solid " + T.accent + "44", borderRadius: T.radiusSm, padding: "12px 14px" }}>
-                        <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>💡 Compare: a higher-leverage starting point</div>
-                        <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.6 }}>
-                          The <strong style={{ color: T.textPrimary }}>{perfPkg.name} package</strong> ({fmt(perfPkg.price)}) bundles <strong>duct sealing + boot sealing + duct cleaning</strong>. For most homes this combination delivers a meaningful share of the comfort and efficiency gains a full system replacement would, at a fraction of the investment and a much shorter payback. Worth doing first; a full HVAC replacement can be staged in later if needed.
-                        </div>
-                      </div>
-                    );
-                  })()}
                 </div>
 
                 {/* Learn more toggle */}
@@ -2320,7 +2043,7 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
             } else if (pkg.id === "performance") {
               whyFit = "The highest-leverage option for most homes -- combines duct sealing + boot sealing + duct cleaning for a complete delivery-system restoration. Typically delivers the strongest savings-per-dollar of any single investment, which is why it is the most cost-effective starting point we offer.";
             } else {
-              whyFit = "Ideal for homes where comfort control, monitoring, and full system delivery are all priorities. Includes smart thermostats, sensors, filters, and monitoring alongside the complete seal package.";
+              whyFit = "The complete duct system overhaul -- everything in Performance plus a 4-inch filter/plenum upgrade, an advanced pressure verification report, and a 12-month comfort follow-up. Best fit when the customer wants the fullest possible restoration in one visit.";
             }
 
             return (
@@ -3114,7 +2837,7 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
   // Live score + savings projection that updates as add-ons are toggled
   var si              = scoreInputs || {};
   var currentScore    = calculateEfficiencyScore(si);
-  var emptyAddons     = { ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false, hvacReplacement: false };
+  var emptyAddons     = { ductCleaning: false, bootSealing: false, filterUpgrade: false };
   var pkgOnly         = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, emptyAddons);
   var withSelections  = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, addons);
   var addonCount      = Object.keys(addons).filter(function(k) { return addons[k] && !addonIncluded(selectedPackageId, k); }).length;
@@ -3247,41 +2970,6 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
                 </div>
               )}
 
-              {active && addon.id === "emporiaMonitor" && (
-                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
-                  <ConfigRow label="Electrical Panels">
-                    {[1, 2, 3].map(function(n) {
-                      return selBtn(n + " panel" + (n > 1 ? "s" : ""), (addonConfigs.panelCount || 1) === n, function() { setCfg("panelCount", n); });
-                    })}
-                  </ConfigRow>
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>
-                    {fmt(a.basePricePerPanel + a.installPerPanel)} per panel (hardware + install)
-                  </div>
-                </div>
-              )}
-
-              {active && addon.id === "thermostatPackage" && (
-                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
-                  <ConfigRow label="Thermostat Type">
-                    {selBtn("Basic -- $350", (addonConfigs.thermostatType || a.defaultType) === "basic", function() { setCfg("thermostatType", "basic"); })}
-                    {selBtn("Advanced -- $550", (addonConfigs.thermostatType || a.defaultType) === "advanced", function() { setCfg("thermostatType", "advanced"); })}
-                    {selBtn("Premium -- $850", (addonConfigs.thermostatType || a.defaultType) === "premium", function() { setCfg("thermostatType", "premium"); })}
-                  </ConfigRow>
-                  <ConfigRow label="Installation">
-                    {selBtn("Standard -- $150", (addonConfigs.thermostatInstall || a.defaultInstall) === "standard", function() { setCfg("thermostatInstall", "standard"); })}
-                    {selBtn("Complex -- $300", (addonConfigs.thermostatInstall || a.defaultInstall) === "complex", function() { setCfg("thermostatInstall", "complex"); })}
-                  </ConfigRow>
-                  <ConfigRow label="Room Sensors ($85 each)">
-                    {[0, 1, 2, 3, 4, 5].map(function(n) {
-                      return selBtn(n === 0 ? "None" : n + "", (addonConfigs.sensorCount != null ? addonConfigs.sensorCount : a.defaultSensors) === n, function() { setCfg("sensorCount", n); });
-                    })}
-                  </ConfigRow>
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 8 }}>
-                    {sys} system{sys > 1 ? "s" : ""} x (thermostat + install) + sensors. Min {fmt(a.minPrice)}.
-                  </div>
-                </div>
-              )}
-
               {active && addon.id === "filterUpgrade" && (
                 <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
                   <ConfigRow label="Install Complexity">
@@ -3291,53 +2979,6 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
                   </ConfigRow>
                   <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>
                     {fmt(a.pricePerSystem + (a.complexityAdj[addonConfigs.filterComplexity || a.defaultComplexity] || 0))} x {sys} system{sys > 1 ? "s" : ""}
-                  </div>
-                </div>
-              )}
-
-              {active && addon.id === "poolPump" && (
-                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
-                  <ConfigRow label="Pump Type">
-                    {selBtn("Entry -- $1,800", (addonConfigs.pumpType || a.defaultType) === "entry", function() { setCfg("pumpType", "entry"); })}
-                    {selBtn("Mid -- $2,200", (addonConfigs.pumpType || a.defaultType) === "mid", function() { setCfg("pumpType", "mid"); })}
-                    {selBtn("Premium -- $2,600", (addonConfigs.pumpType || a.defaultType) === "premium", function() { setCfg("pumpType", "premium"); })}
-                  </ConfigRow>
-                  <ConfigRow label="Installation">
-                    {selBtn("Standard -- $600", (addonConfigs.pumpInstall || a.defaultInstall) === "standard", function() { setCfg("pumpInstall", "standard"); })}
-                    {selBtn("Complex -- $1,000", (addonConfigs.pumpInstall || a.defaultInstall) === "complex", function() { setCfg("pumpInstall", "complex"); })}
-                  </ConfigRow>
-                  <ConfigRow label="Pool Size">
-                    {selBtn("Small <12k gal", (addonConfigs.poolSize || a.defaultPoolSize) === "small", function() { setCfg("poolSize", "small"); })}
-                    {selBtn("Medium 12-20k", (addonConfigs.poolSize || a.defaultPoolSize) === "medium", function() { setCfg("poolSize", "medium"); })}
-                    {selBtn("Large 20k+", (addonConfigs.poolSize || a.defaultPoolSize) === "large", function() { setCfg("poolSize", "large"); })}
-                  </ConfigRow>
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>
-                    (pump + install) x pool size multiplier. Min {fmt(a.minPrice)}.
-                  </div>
-                </div>
-              )}
-
-              {active && addon.id === "hvacReplacement" && (
-                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
-                  <ConfigRow label="System Type">
-                    {selBtn("AC Only", (addonConfigs.hvacType || a.defaultType) === "ac", function() { setCfg("hvacType", "ac"); })}
-                    {selBtn("Furnace Only", (addonConfigs.hvacType || a.defaultType) === "furnace", function() { setCfg("hvacType", "furnace"); })}
-                    {selBtn("Heat Pump", (addonConfigs.hvacType || a.defaultType) === "heatPump", function() { setCfg("hvacType", "heatPump"); })}
-                    {selBtn("Full System (AC + Furnace)", (addonConfigs.hvacType || a.defaultType) === "fullSystem", function() { setCfg("hvacType", "fullSystem"); })}
-                  </ConfigRow>
-                  <ConfigRow label="Efficiency Tier">
-                    {selBtn("Standard SEER 14-15", (addonConfigs.hvacTier || a.defaultTier) === "standard", function() { setCfg("hvacTier", "standard"); })}
-                    {selBtn("High SEER 16-18", (addonConfigs.hvacTier || a.defaultTier) === "high", function() { setCfg("hvacTier", "high"); })}
-                    {selBtn("Premium SEER 19-22", (addonConfigs.hvacTier || a.defaultTier) === "premium", function() { setCfg("hvacTier", "premium"); })}
-                  </ConfigRow>
-                  <ConfigRow label="Number of Systems to Replace">
-                    {[1, 2, 3, 4].map(function(n) {
-                      var current = addonConfigs.hvacCount != null ? addonConfigs.hvacCount : sys;
-                      return selBtn(n + " system" + (n > 1 ? "s" : ""), current === n, function() { setCfg("hvacCount", n); });
-                    })}
-                  </ConfigRow>
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 8, lineHeight: 1.5 }}>
-                    Highest-impact upgrade available. Modern equipment uses 30-50% less energy than systems 10+ years old. May qualify for utility rebates and federal tax credits. Range: {fmt(a.minPrice)} - {fmt(a.maxPrice)}.
                   </div>
                 </div>
               )}
@@ -3992,28 +3633,23 @@ export default function App() {
   });
   var homeProfile = s1[0]; var setHomeProfile = s1[1];
 
-  // Default score inputs -- start neutral
+  // Default score inputs -- start neutral (duct-focused questions only)
   var s2 = useState({
     comfort: "some", bills: "slightly", airflow: "weak", runtime: "long",
     upgrades: "none", dust: "some", unusedRooms: "none",
-    hasThermostat: false, sensors: "none", hasMonitoring: false,
-    hvacAge: "5to10", systemType: "mixed", thermostatType: "manual", floors: "1",
+    hvacAge: "5to10", systemType: "mixed", floors: "1",
   });
   var scoreInputs = s2[0]; var setScoreInputs = s2[1];
 
   var s3 = useState("performance");
   var selectedPackageId = s3[0]; var setSelectedPackageId = s3[1];
 
-  var s4 = useState({ ductCleaning: false, bootSealing: false, emporiaMonitor: false, thermostatPackage: false, filterUpgrade: false, poolPump: false, hvacReplacement: false });
+  var s4 = useState({ ductCleaning: false, bootSealing: false, filterUpgrade: false });
   var addons = s4[0]; var setAddons = s4[1];
 
   // addonConfigs: per-addon configuration inputs used by the pricing engine
   var s4b = useState({
-    panelCount: 1,
-    thermostatType: "advanced", thermostatInstall: "standard", sensorCount: 3,
     filterComplexity: "standard",
-    pumpType: "mid", pumpInstall: "standard", poolSize: "medium",
-    hvacType: "fullSystem", hvacTier: "high", hvacCount: null,  // null = use systemCount
   });
   var addonConfigs = s4b[0]; var setAddonConfigs = s4b[1];
 
