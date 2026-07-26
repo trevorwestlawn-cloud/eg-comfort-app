@@ -86,15 +86,21 @@ const CONFIG = {
     },
   },
 
-  // The New York Times piece on duct leakage and home energy loss --
-  // used as an educational hand-off during the assessment. Set the
-  // real URL once confirmed; the article widget renders whatever is
-  // set here.
+  // The New York Times / McKinsey chart on home efficiency opportunities.
+  // Sealing ducts is ranked #1 by potential energy savings (510
+  // trillion BTUs) and is among the lowest-cost improvements on a
+  // per-million-BTU basis. We hand this to every homeowner before
+  // the assessment as independent third-party validation.
   nytArticle: {
-    title: "How Leaky Ducts Waste Home Energy",
-    citation: "The New York Times",
-    url: "", // TODO -- paste the real NYT article URL here
-    summary: "The independent Times reporting that frames why duct leakage -- not equipment -- is where most home energy losses actually occur. We share this with every homeowner before the assessment so you can verify what we say against a source that has no stake in the outcome.",
+    title: "Home Efficiency Opportunities",
+    citation: "The New York Times / McKinsey & Company",
+    url: "", // TODO -- paste the NYT article URL here when confirmed
+    headline: "Seal ducts: #1 improvement",
+    stat: "510 trillion BTUs",
+    statLabel: "potential annual energy savings (largest of any home improvement studied)",
+    cost: "$4.90 per million BTUs",
+    costLabel: "one of the lowest-cost improvements on the list -- cheaper than programmable thermostats, insulation, or window upgrades",
+    summary: "A McKinsey & Company study charted in the New York Times ranked ten common home efficiency improvements by their potential energy savings. Sealing ducts came in first at 510 trillion BTUs -- nearly double the next-largest opportunity -- and is one of the most cost-effective interventions on the list. The Times noted the required investment 'would be paid for by the savings over their lifetime.'",
   },
 
   // ---- ADD-ON PRICING ENGINE ----
@@ -1398,15 +1404,32 @@ function CoverScreen({ onNext }) {
         </p>
       </div>
 
-      {/* New York Times educational hand-off */}
+      {/* New York Times / McKinsey chart -- independent validation */}
       {CONFIG.nytArticle && (
-        <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: T.radius, padding: "18px 22px", marginBottom: 4 }}>
+        <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: T.radius, padding: "20px 22px", marginBottom: 4, boxShadow: T.shadow }}>
           <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Independent Reporting — {CONFIG.nytArticle.citation}</div>
-          <div style={{ fontFamily: T.sans, fontSize: 14, fontWeight: 700, color: T.textPrimary, marginBottom: 6 }}>{CONFIG.nytArticle.title}</div>
-          <p style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.6, margin: "0 0 10px" }}>{CONFIG.nytArticle.summary}</p>
+          <div style={{ fontFamily: T.sans, fontSize: 16, fontWeight: 800, color: T.textPrimary, marginBottom: 12 }}>{CONFIG.nytArticle.title}</div>
+
+          {/* Headline stat grid */}
+          {CONFIG.nytArticle.stat && (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 14 }}>
+              <div style={{ background: T.accentLight, borderRadius: T.radiusSm, padding: "12px 14px" }}>
+                <div style={{ fontFamily: T.sans, fontSize: 10, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Seal ducts — ranked #1</div>
+                <div style={{ fontFamily: T.sans, fontSize: 22, fontWeight: 800, color: T.accent, marginBottom: 2 }}>{CONFIG.nytArticle.stat}</div>
+                <div style={{ fontFamily: T.sans, fontSize: 11, color: T.textSec, lineHeight: 1.45 }}>{CONFIG.nytArticle.statLabel}</div>
+              </div>
+              <div style={{ background: T.surfaceHigh, borderRadius: T.radiusSm, padding: "12px 14px" }}>
+                <div style={{ fontFamily: T.sans, fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Cost per million BTUs</div>
+                <div style={{ fontFamily: T.sans, fontSize: 22, fontWeight: 800, color: T.textPrimary, marginBottom: 2 }}>{CONFIG.nytArticle.cost}</div>
+                <div style={{ fontFamily: T.sans, fontSize: 11, color: T.textSec, lineHeight: 1.45 }}>{CONFIG.nytArticle.costLabel}</div>
+              </div>
+            </div>
+          )}
+
+          <p style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.65, margin: "0 0 10px" }}>{CONFIG.nytArticle.summary}</p>
           {CONFIG.nytArticle.url
             ? <a href={CONFIG.nytArticle.url} target="_blank" rel="noreferrer" style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 700, color: T.accent, textDecoration: "none" }}>Read the article →</a>
-            : <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, fontStyle: "italic" }}>URL not set — paste the article link into CONFIG.nytArticle.url to enable the link.</div>
+            : <div style={{ fontFamily: T.sans, fontSize: 11, color: T.textMuted, fontStyle: "italic" }}>Set CONFIG.nytArticle.url to enable the "Read the article →" link.</div>
           }
         </div>
       )}
