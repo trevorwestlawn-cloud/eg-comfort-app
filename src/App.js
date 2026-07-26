@@ -2841,23 +2841,89 @@ function SolutionScreen() {
 // ============================================================
 // SCREEN 10 -- Packages
 // ============================================================
-function PackagesScreen({ selectedPackageId, setSelectedPackageId, homeProfile }) {
+function PackagesScreen({ selectedPackageId, setSelectedPackageId, homeProfile, setHomeProfile }) {
   var pkgs = Object.values(CONFIG.packages);
   var sysCount = (homeProfile && homeProfile.systemCount) || 2;
+
+  function setSystemCount(n) {
+    if (setHomeProfile) {
+      setHomeProfile(function(p) { return Object.assign({}, p, { systemCount: n }); });
+    }
+  }
+
   return (
     <Wrap>
-      <SecTitle children="Choose the Right Package" sub={"Prices shown for a " + sysCount + "-system home. All packages include the assessment-first guarantee: if we don't measure leakage over the 4% code threshold, we walk away at no cost."} />
+      <SecTitle children="Choose the Right Package" sub="All packages include the 4% guarantee — if we don't measure leakage over the code threshold, we disconnect and leave at no cost." />
+
+      {/* System count selector -- source of truth, prices update live */}
+      <div style={{ background: T.surface, border: "1.5px solid " + T.border, borderRadius: T.radius, padding: "20px 22px", marginBottom: 24, boxShadow: T.shadow }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 5 }}>How many HVAC systems does this home have?</div>
+            <div style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.5 }}>Prices below update as you change this. Includes the AC + furnace / heat pump / air handler at each location.</div>
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            {[1, 2, 3, 4].map(function(n) {
+              var sel = sysCount === n;
+              return (
+                <button
+                  key={n}
+                  onClick={function() { setSystemCount(n); }}
+                  style={{
+                    minWidth: 62, padding: "14px 8px",
+                    borderRadius: T.radiusSm,
+                    border: "2px solid " + (sel ? T.accent : T.border),
+                    background: sel ? T.accent : T.surface,
+                    color: sel ? T.white : T.textSec,
+                    fontFamily: T.sans, fontSize: 20, fontWeight: 800,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    boxShadow: sel ? "0 3px 12px rgba(27,158,107,0.28)" : "none",
+                  }}
+                >{n === 4 ? "4+" : n}</button>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16, alignItems: "start" }}>
         {pkgs.map(function(pkg) {
           var sel = selectedPackageId === pkg.id;
           var isMid = pkg.id === "performance";
           var pkgSystemPrice = getPackagePrice(pkg, sysCount);
+          // Build-up breakdown: base + each additional system delta
+          var breakdown = [];
+          for (var i = 1; i <= sysCount; i++) {
+            var priceAtI  = getPackagePrice(pkg, i);
+            var priceAtIminus = i === 1 ? 0 : getPackagePrice(pkg, i - 1);
+            var delta = priceAtI - priceAtIminus;
+            breakdown.push({ n: i, delta: delta, running: priceAtI });
+          }
           return (
             <div key={pkg.id} onClick={function() { setSelectedPackageId(pkg.id); }} style={{ background: isMid ? "#1E2832" : T.surface, border: "2px solid " + (sel ? T.positive : isMid ? T.accentMid : T.surfaceBorder), borderRadius: T.radius, padding: isMid ? "32px 24px" : "26px 22px", cursor: "pointer", transition: "all 0.18s", boxShadow: isMid ? "0 8px 32px rgba(39,209,127,0.12), 0 2px 12px rgba(0,0,0,0.4)" : sel ? T.shadowGlow : T.shadow, transform: isMid ? "scale(1.03)" : "scale(1)" }}>
               {pkg.badge && <div style={{ marginBottom: 14 }}><Bdg variant={isMid ? "gold" : "muted"}>{pkg.badge}</Bdg></div>}
               <div style={{ fontFamily: T.sans, fontSize: 11, color: isMid ? "rgba(255,255,255,0.55)" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>{pkg.name}</div>
-              <div style={{ fontFamily: T.font, fontSize: 32, fontWeight: 700, color: isMid ? T.white : sel ? T.positive : T.textPrimary, marginBottom: 4 }}>{fmt(pkgSystemPrice)}</div>
-              <div style={{ fontFamily: T.sans, fontSize: 10, color: isMid ? "rgba(255,255,255,0.5)" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 18 }}>for {sysCount} system{sysCount > 1 ? "s" : ""}</div>
+              <div style={{ fontFamily: T.font, fontSize: 38, fontWeight: 800, color: isMid ? T.white : sel ? T.positive : T.textPrimary, marginBottom: 4, transition: "color 0.2s" }}>{fmt(pkgSystemPrice)}</div>
+              <div style={{ fontFamily: T.sans, fontSize: 11, color: isMid ? "rgba(255,255,255,0.5)" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14 }}>for {sysCount} system{sysCount > 1 ? "s" : ""}</div>
+
+              {/* Price build-up */}
+              <div style={{ background: isMid ? "rgba(255,255,255,0.04)" : T.surfaceHigh, borderRadius: T.radiusSm, padding: "10px 12px", marginBottom: 16 }}>
+                <div style={{ fontFamily: T.sans, fontSize: 10, fontWeight: 700, color: isMid ? "rgba(255,255,255,0.5)" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 6 }}>How this price is built</div>
+                {breakdown.map(function(b) {
+                  return (
+                    <div key={b.n} style={{ display: "flex", justifyContent: "space-between", fontFamily: T.sans, fontSize: 12, marginBottom: 3, color: isMid ? "rgba(255,255,255,0.75)" : T.textSec }}>
+                      <span>{b.n === 1 ? "1st system (base)" : b.n + (b.n === 2 ? "nd" : b.n === 3 ? "rd" : "th") + " system"}</span>
+                      <span style={{ fontWeight: 600, color: isMid ? T.white : T.textPrimary }}>{b.n === 1 ? fmt(b.delta) : "+ " + fmt(b.delta)}</span>
+                    </div>
+                  );
+                })}
+                <div style={{ display: "flex", justifyContent: "space-between", fontFamily: T.sans, fontSize: 13, fontWeight: 700, marginTop: 6, paddingTop: 6, borderTop: "1px solid " + (isMid ? "rgba(255,255,255,0.08)" : T.border), color: isMid ? T.white : T.textPrimary }}>
+                  <span>Total</span>
+                  <span>{fmt(pkgSystemPrice)}</span>
+                </div>
+              </div>
+
               <div style={{ borderTop: "1px solid " + T.surfaceBorder, paddingTop: 14 }}>
                 {pkg.includes.map(function(item) {
                   return <div key={item} style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 9 }}><span style={{ color: isMid ? T.accentMid : T.accent, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>+</span><span style={{ fontFamily: T.sans, fontSize: 12, color: isMid ? "rgba(255,255,255,0.75)" : T.textSec, lineHeight: 1.5 }}>{item}</span></div>;
@@ -3745,7 +3811,7 @@ export default function App() {
     { label: "Problem",    c: <ProblemScreen /> },
     { label: "Impact",     c: <ImpactScreen homeProfile={homeProfile} /> },
     { label: "Solution",   c: <SolutionScreen /> },
-    { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} homeProfile={homeProfile} /> },
+    { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} homeProfile={homeProfile} setHomeProfile={setHomeProfile} /> },
     { label: "Add-Ons",    c: <AddonsScreen selectedPackageId={selectedPackageId} addons={addons} setAddons={setAddons} homeProfile={homeProfile} addonConfigs={addonConfigs} setAddonConfigs={setAddonConfigs} scoreInputs={scoreInputs} /> },
     { label: "Order",      c: <OrderBuilderScreen orderItems={orderItems} setOrderItems={setOrderItems} selectedTermId={selectedTermId} /> },
     { label: "Financing",  c: <FinancingScreen subtotal={sub} selectedTermId={selectedTermId} setSelectedTermId={setSelectedTermId} homeProfile={homeProfile} scoreInputs={scoreInputs} selectedPackageId={selectedPackageId} addons={addons} /> },
