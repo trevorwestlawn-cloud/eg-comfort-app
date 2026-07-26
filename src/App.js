@@ -98,28 +98,15 @@ const CONFIG = {
   },
 
   // ---- ADD-ON PRICING ENGINE ----
-  // Scoped to duct cleaning / sealing / airflow only.
-  // Prices are computed dynamically from homeProfile inputs.
+  // Simplified to duct sealing + cleaning only. Cleaning is already
+  // the Performance tier, but kept here as a standalone add-on for
+  // rep flexibility in the Order Builder.
   addons: {
     ductCleaning: {
       id: "ductCleaning", label: "Duct Cleaning", poolOnly: false, perSystem: false,
       basePrice: 650,
-      // Multiplied by homeSize: small=1.0, medium=1.15, large=1.3
       sizeMultipliers: { small: 1.0, medium: 1.15, large: 1.3 },
       minPrice: 650, maxPrice: 1200,
-    },
-    bootSealing: {
-      id: "bootSealing", label: "Boot Sealing", poolOnly: false, perSystem: true,
-      pricePerSystem: 299,
-      minPrice: 299, maxPrice: 900,
-    },
-    filterUpgrade: {
-      id: "filterUpgrade", label: "4\" Filter / Plenum Upgrade", poolOnly: false, perSystem: true,
-      pricePerSystem: 850,
-      // Complexity adjustments per system
-      complexityAdj: { standard: 0, difficult: 150, premium: 200 },
-      defaultComplexity: "standard",
-      minPrice: 850, maxPrice: 3000,
     },
   },
 
@@ -282,32 +269,28 @@ function getEraWeightAdjustments(era, scoreInputs) {
   var hasAirflow    = si.airflow !== "fine";
   var alreadySealed = si.alreadySealed === true;
 
-  var adj = { ductSealing: 0, bootSealing: 0, ductCleaning: 0, filterUpgrade: 0 };
+  var adj = { ductSealing: 0, ductCleaning: 0 };
 
   switch(era) {
     case "A":
-      adj.ductSealing   += alreadySealed ? -1 : 3;
-      adj.bootSealing   += 2;
-      adj.ductCleaning  += 2;
-      adj.filterUpgrade += 1;
+      adj.ductSealing  += alreadySealed ? -1 : 3;
+      adj.ductCleaning += 2;
       break;
     case "B":
-      adj.ductSealing   += alreadySealed ? -1 : 2;
-      adj.bootSealing   += 1;
-      adj.ductCleaning  += 1;
+      adj.ductSealing  += alreadySealed ? -1 : 2;
+      adj.ductCleaning += 1;
       break;
     case "C":
-      adj.ductSealing   += alreadySealed ? -1 : 2;
-      adj.bootSealing   += 1;
+      adj.ductSealing  += alreadySealed ? -1 : 2;
       break;
     case "D":
-      adj.ductSealing   += alreadySealed ? -2 : (hasAirflow ? 1 : 0);
+      adj.ductSealing  += alreadySealed ? -2 : (hasAirflow ? 1 : 0);
       break;
     case "E":
-      adj.ductSealing   += alreadySealed ? -2 : (hasAirflow ? 0 : -1);
+      adj.ductSealing  += alreadySealed ? -2 : (hasAirflow ? 0 : -1);
       break;
     case "F":
-      adj.ductSealing   += alreadySealed ? -3 : (hasAirflow ? 0 : -2);
+      adj.ductSealing  += alreadySealed ? -3 : (hasAirflow ? 0 : -2);
       break;
     default:
       break;
@@ -417,10 +400,8 @@ function getRecommendations(inputs) {
 // Calibrated against real EG Comfort customer outcomes for the duct
 // sealing + boot sealing + cleaning + filter upgrade stack.
 var UPGRADE_IMPACTS = {
-  ductSealing:   { savingsLow: 0.12, savingsHigh: 0.25, scoreLow: 6, scoreHigh: 15, label: "Duct Sealing / Airflow Correction" },
-  bootSealing:   { savingsLow: 0.03, savingsHigh: 0.08, scoreLow: 2, scoreHigh: 5,  label: "Boot Sealing" },
-  ductCleaning:  { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1, scoreHigh: 3,  label: "Duct Cleaning" },
-  filterUpgrade: { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1, scoreHigh: 3,  label: "Filter / Plenum Upgrade" },
+  ductSealing:  { savingsLow: 0.12, savingsHigh: 0.25, scoreLow: 6, scoreHigh: 15, label: "Duct Sealing / Airflow Correction" },
+  ductCleaning: { savingsLow: 0.02, savingsHigh: 0.05, scoreLow: 1, scoreHigh: 3,  label: "Duct Cleaning" },
 };
 
 // Map package/addon IDs to upgrade impact keys
@@ -434,9 +415,7 @@ function getUpgradesForSelection(packageId, addons) {
     upgrades.push("ductCleaning");
   }
   // Active add-ons not already in package
-  if (addons.filterUpgrade && upgrades.indexOf("filterUpgrade") === -1) upgrades.push("filterUpgrade");
-  if (addons.bootSealing   && upgrades.indexOf("bootSealing")   === -1) upgrades.push("bootSealing");
-  if (addons.ductCleaning  && upgrades.indexOf("ductCleaning")  === -1) upgrades.push("ductCleaning");
+  if (addons.ductCleaning && upgrades.indexOf("ductCleaning") === -1) upgrades.push("ductCleaning");
   return upgrades;
 }
 
@@ -494,7 +473,7 @@ function calculateSavingsProjection(score, homeProfile, scoreInputs, packageId, 
 
   // Diminishing returns group -- all four duct upgrades share the same
   // delivery system, so stacking has decreasing marginal return
-  var airflowGroup = ["ductSealing", "bootSealing", "ductCleaning", "filterUpgrade"];
+  var airflowGroup = ["ductSealing", "ductCleaning"];
 
   var savingsLowTotal  = 0;
   var savingsHighTotal = 0;
@@ -591,10 +570,8 @@ function getUtilitySplit(scoreInputs) {
 
 // How much of each upgrade's savings goes to electric vs gas
 var UPGRADE_UTILITY_SPLIT = {
-  ductSealing:   { e: 0.50, g: 0.50 }, // affects both equally -- leakage in both seasons
-  bootSealing:   { e: 0.50, g: 0.50 },
-  ductCleaning:  { e: 0.55, g: 0.45 },
-  filterUpgrade: { e: 0.60, g: 0.40 }, // slightly more cooling-side impact
+  ductSealing:  { e: 0.50, g: 0.50 }, // affects both equally -- leakage in both seasons
+  ductCleaning: { e: 0.55, g: 0.45 },
 };
 
 function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId, addons) {
@@ -638,7 +615,7 @@ function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId,
   // Upgrade savings split by utility
   var upgrades = getUpgradesForSelection(packageId, addons);
   var airflowCount = 0;
-  var airflowGroup = ["ductSealing", "bootSealing", "ductCleaning", "filterUpgrade"];
+  var airflowGroup = ["ductSealing", "ductCleaning"];
 
   var elecSavLow = 0; var elecSavHigh = 0;
   var gasSavLow  = 0; var gasSavHigh  = 0;
@@ -745,28 +722,7 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
     });
   }
 
-  // 2. Boot Sealing -- addresses the register-boot connection leaks
-  var bootWeight = 0;
-  if (si.airflow === "weak" || si.airflow === "veryWeak") bootWeight += 2;
-  if (si.comfort === "some" || si.comfort === "major")    bootWeight += 1;
-  if (si.dust    === "some" || si.dust    === "severe")   bootWeight += 1;
-  if (si.upgrades === "none")                              bootWeight += 1;
-  bootWeight += eraAdj.bootSealing || 0;
-  if (bootWeight >= 2) {
-    recs.push({
-      id: "bootSealing", priority: 2,
-      confidence: bootWeight >= 4 ? "Strong Match" : "Likely Helpful", weight: bootWeight,
-      name: "Boot Sealing",
-      what: "Seals the connection between each duct branch and the register boot, where a large share of duct leakage typically hides.",
-      why: si.dust !== "fine"
-        ? "Register boots are one of the most common leak points. Air escapes through gaps here and also draws unconditioned air from the ceiling/floor cavity, which then shows up as dust and reduced airflow at the register."
-        : "Even in newer homes, the boot-to-register seal degrades over time. Correcting these is a low-cost, high-return step that complements the main duct sealing.",
-      impact: { comfort: "High", control: "Low", electric: hasElec ? "Moderate" : "Low", gas: hasGas ? "Moderate" : "Low" },
-      detail: "Boot sealing focuses on the last few feet of the duct system -- the transition from the trunk line to each register. These joints often leak significantly because they sit inside ceiling and floor cavities that are hard to inspect. Sealing them typically improves per-register airflow noticeably.",
-    });
-  }
-
-  // 3. Duct Cleaning
+  // 2. Duct Cleaning
   var cleanWeight = 0;
   if (si.dust === "severe") cleanWeight += 3;
   if (si.dust === "some")   cleanWeight += 1;
@@ -776,7 +732,7 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
   cleanWeight += eraAdj.ductCleaning || 0;
   if (cleanWeight >= 2) {
     recs.push({
-      id: "ductCleaning", priority: 3,
+      id: "ductCleaning", priority: 2,
       confidence: cleanWeight >= 4 ? "Strong Match" : "Likely Helpful", weight: cleanWeight,
       name: "Duct Cleaning",
       what: "Removes accumulated dust, allergens, and construction debris from the entire duct system before it's re-sealed and re-verified.",
@@ -788,33 +744,11 @@ function buildLiveRecommendations(scoreInputs, homeProfile) {
     });
   }
 
-  // 4. Filter / Airflow
-  var filterWeight = 0;
-  if (si.dust === "severe") filterWeight += 3;
-  if (si.dust === "some") filterWeight += 1;
-  if (si.airflow === "weak" || si.airflow === "veryWeak") filterWeight += 1;
-  if (si.hvacAge === "10plus") filterWeight += 1;
-  filterWeight += eraAdj.filterUpgrade;
-  if (filterWeight >= 2) {
-    recs.push({
-      id: "filterUpgrade", priority: 4, confidence: filterWeight >= 3 ? "Strong Match" : "Likely Helpful", weight: filterWeight,
-      name: "Filter / Plenum Upgrade",
-      what: "Replaces restrictive or undersized filter assemblies with 4-inch media cabinets sized properly for the system's airflow requirements.",
-      why: si.dust === "severe"
-        ? "Severe dust accumulation often indicates a combination of poor filtration and duct leakage. Upsizing the filter assembly reduces system strain and captures more particulate before it circulates."
-        : "Upgrading to a 4-inch filter with the right media rating dramatically improves filtration life and reduces the pressure drop the blower has to work against.",
-      impact: { comfort: "Moderate", control: "Low", electric: "Moderate", gas: "Moderate" },
-      detail: "Standard 1-inch filters restrict airflow when loaded, forcing the air handler to work harder. A properly sized 4-inch filter cabinet holds substantially more media, filters more effectively (MERV 11-13 typical), and requires less frequent changes -- reducing strain on the system while improving indoor air quality.",
-    });
-  }
-
   // Attach cost info to each rec so the card can display it
   recs.forEach(function(r) {
     if (r.cost) return;
-    if (r.id === "ductSealing")   { r.cost = "Included";      r.costNote = "Bundled in every EG Comfort package."; }
-    if (r.id === "bootSealing")   { r.cost = "$299 – $900";   r.costNote = "$299 per system, capped at $900."; }
-    if (r.id === "ductCleaning")  { r.cost = "$650 – $1,200"; r.costNote = "Scales with home size (small / medium / large)."; }
-    if (r.id === "filterUpgrade") { r.cost = "$850 – $3,000"; r.costNote = "Per system, depending on cabinet complexity."; }
+    if (r.id === "ductSealing")  { r.cost = "Included";      r.costNote = "Bundled in every EG Comfort package."; }
+    if (r.id === "ductCleaning") { r.cost = "$650 – $1,200"; r.costNote = "Scales with home size (small / medium / large). Included in the Performance package."; }
   });
 
   // Sort by weight descending
@@ -1023,18 +957,6 @@ function calculateAddonPrice(aid, homeProfile, addonConfigs) {
     return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
   }
 
-  if (aid === "bootSealing") {
-    var raw = a.pricePerSystem * sys;
-    return Math.max(a.minPrice, Math.min(a.maxPrice, raw));
-  }
-
-  if (aid === "filterUpgrade") {
-    var complexity = cfg.filterComplexity || a.defaultComplexity;
-    var adj = a.complexityAdj[complexity] || 0;
-    var raw = sys * (a.pricePerSystem + adj);
-    return Math.max(a.minPrice, Math.min(a.maxPrice, Math.round(raw)));
-  }
-
   return 0;
 }
 
@@ -1042,9 +964,7 @@ function calculateAddonPrice(aid, homeProfile, addonConfigs) {
 function addonPrice(aid, sys) {
   var a = CONFIG.addons[aid];
   if (!a) return 0;
-  if (aid === "bootSealing")   return (a.pricePerSystem || 299) * sys;
-  if (aid === "filterUpgrade") return (a.pricePerSystem || 850) * sys;
-  if (aid === "ductCleaning")  return a.basePrice || 650;
+  if (aid === "ductCleaning") return a.basePrice || 650;
   return 0;
 }
 
@@ -1068,8 +988,6 @@ var ORDER_CATALOG = [
   { id: "pkg_performance", type: "package", label: "Performance Package (2-system default)",   unitPrice: 4000, category: "Packages",  defaultQty: 1, note: "Core Seal + cleaning. 1sys $3,250 / 2sys $4,000 / 3sys $4,500 / +$500" },
   // Duct Services (add-on)
   { id: "ao_ductClean",    type: "addon",   label: "Duct Cleaning",                  unitPrice: 799,  category: "Add-Ons",   defaultQty: 1, note: "Adjust qty for multiple systems" },
-  { id: "ao_bootSeal",     type: "addon",   label: "Boot Sealing",                   unitPrice: 299,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
-  { id: "ao_filter",       type: "addon",   label: "4-inch Filter / Plenum Upgrade", unitPrice: 895,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
   // Service
   { id: "svc_inspection",  type: "service", label: "Duct Performance Inspection",    unitPrice: 0,    category: "Services",  defaultQty: 1, note: "Included with all packages" },
   { id: "svc_verify",      type: "service", label: "Post-Seal Verification Report",  unitPrice: 149,  category: "Services",  defaultQty: 1, note: "Written before/after leakage report" },
@@ -2969,7 +2887,7 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
   // Live score + savings projection that updates as add-ons are toggled
   var si              = scoreInputs || {};
   var currentScore    = calculateEfficiencyScore(si);
-  var emptyAddons     = { ductCleaning: false, bootSealing: false, filterUpgrade: false };
+  var emptyAddons     = { ductCleaning: false };
   var pkgOnly         = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, emptyAddons);
   var withSelections  = calculateDualUtilitySavings(currentScore, homeProfile, si, selectedPackageId, addons);
   var addonCount      = Object.keys(addons).filter(function(k) { return addons[k] && !addonIncluded(selectedPackageId, k); }).length;
@@ -3094,26 +3012,6 @@ function AddonsScreen({ selectedPackageId, addons, setAddons, homeProfile, addon
                 </div>
               )}
 
-              {active && addon.id === "bootSealing" && (
-                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.muted }}>
-                    {fmt(a.pricePerSystem)} x {sys} system{sys > 1 ? "s" : ""}
-                  </div>
-                </div>
-              )}
-
-              {active && addon.id === "filterUpgrade" && (
-                <div style={{ borderTop: "1px solid " + T.border, paddingTop: 10, marginTop: 4 }}>
-                  <ConfigRow label="Install Complexity">
-                    {selBtn("Standard", (addonConfigs.filterComplexity || a.defaultComplexity) === "standard", function() { setCfg("filterComplexity", "standard"); })}
-                    {selBtn("Difficult +$150", (addonConfigs.filterComplexity || a.defaultComplexity) === "difficult", function() { setCfg("filterComplexity", "difficult"); })}
-                    {selBtn("Premium Cabinet +$200", (addonConfigs.filterComplexity || a.defaultComplexity) === "premium", function() { setCfg("filterComplexity", "premium"); })}
-                  </ConfigRow>
-                  <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, marginTop: 6 }}>
-                    {fmt(a.pricePerSystem + (a.complexityAdj[addonConfigs.filterComplexity || a.defaultComplexity] || 0))} x {sys} system{sys > 1 ? "s" : ""}
-                  </div>
-                </div>
-              )}
             </div>
           );
         })}
@@ -3777,13 +3675,11 @@ export default function App() {
   var s3 = useState("performance");
   var selectedPackageId = s3[0]; var setSelectedPackageId = s3[1];
 
-  var s4 = useState({ ductCleaning: false, bootSealing: false, filterUpgrade: false });
+  var s4 = useState({ ductCleaning: false });
   var addons = s4[0]; var setAddons = s4[1];
 
   // addonConfigs: per-addon configuration inputs used by the pricing engine
-  var s4b = useState({
-    filterComplexity: "standard",
-  });
+  var s4b = useState({});
   var addonConfigs = s4b[0]; var setAddonConfigs = s4b[1];
 
   var s5 = useState("cash");
@@ -3812,7 +3708,6 @@ export default function App() {
     { label: "Impact",     c: <ImpactScreen homeProfile={homeProfile} /> },
     { label: "Solution",   c: <SolutionScreen /> },
     { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} homeProfile={homeProfile} setHomeProfile={setHomeProfile} /> },
-    { label: "Add-Ons",    c: <AddonsScreen selectedPackageId={selectedPackageId} addons={addons} setAddons={setAddons} homeProfile={homeProfile} addonConfigs={addonConfigs} setAddonConfigs={setAddonConfigs} scoreInputs={scoreInputs} /> },
     { label: "Order",      c: <OrderBuilderScreen orderItems={orderItems} setOrderItems={setOrderItems} selectedTermId={selectedTermId} /> },
     { label: "Financing",  c: <FinancingScreen subtotal={sub} selectedTermId={selectedTermId} setSelectedTermId={setSelectedTermId} homeProfile={homeProfile} scoreInputs={scoreInputs} selectedPackageId={selectedPackageId} addons={addons} /> },
     { label: "Proof",      c: <ProofScreen /> },
