@@ -51,44 +51,66 @@ const CONFIG = {
     billImageUrl:         "",
   },
 
+  // Package pricing scales with system count. Base prices given for
+  // 1 / 2 / 3 systems; each system beyond 3 adds `priceIncrement`.
   packages: {
     coreSeal: {
       id: "coreSeal",
       name: "EG Comfort Core Seal",
-      price: 3000,
-      badge: "Best place to start",
+      priceBySystem: { 1: 2250, 2: 3000, 3: 3500 },
+      priceIncrement: 500,
+      baseSystems: 3,
+      badge: "Assessment + Seal",
       includes: [
-        "Two-system Aeroseal duct sealing",
-        "Airflow balancing",
-        "Before/after leakage verification",
+        "Certified Aeroseal duct sealing (all systems)",
+        "Before/after duct leakage test",
+        "Written verification report",
+        "Guarantee: if measured leakage does not exceed the 4% code threshold, we disconnect and leave at no cost",
       ],
+      guarantee: "If your measured duct leakage does not exceed 4% (current code), we disconnect and leave at no cost.",
       includedAddons: [],
     },
     performance: {
       id: "performance",
       name: "EG Comfort Performance",
-      price: 4198,
+      priceBySystem: { 1: 3250, 2: 4000, 3: 4500 },
+      priceIncrement: 500,
+      baseSystems: 3,
       badge: "Most Popular",
       includes: [
-        "Everything in Core Seal",
+        "Everything in Core Seal (with the same 4% guarantee)",
         "Full duct system cleaning",
-        "Boot sealing at every register",
       ],
-      includedAddons: ["ductCleaning", "bootSealing"],
+      guarantee: "Same 4% leakage guarantee as Core Seal.",
+      includedAddons: ["ductCleaning"],
     },
     ultimate: {
       id: "ultimate",
       name: "EG Comfort Ultimate",
-      price: 5995,
-      badge: "Complete Duct System Overhaul",
+      priceBySystem: { 1: 4550, 2: 5900, 3: 6800 },
+      priceIncrement: 700,
+      baseSystems: 3,
+      badge: "Complete Duct Restoration",
       includes: [
         "Everything in Performance",
+        "Boot sealing at every register",
         "4-inch filter / plenum upgrade (up to 2 systems)",
-        "Advanced pressure verification report",
         "12-month comfort follow-up",
       ],
+      guarantee: "Same 4% leakage guarantee as Core Seal.",
       includedAddons: ["ductCleaning", "bootSealing", "filterUpgrade"],
     },
+  },
+
+  // The New York Times piece on duct leakage and home energy loss --
+  // used as an educational hand-off during the assessment. Set the
+  // real URL once confirmed; the article widget renders whatever is
+  // set here.
+  nytArticle: {
+    title: "How Leaky Ducts Waste Home Energy",
+    citation: "The New York Times",
+    url: "", // TODO -- paste the real NYT article URL here
+    summary: "The independent Times reporting that frames why duct leakage -- not equipment -- is where most home energy losses actually occur. We share this with every homeowner before the assessment so you can verify what we say against a source that has no stake in the outcome.",
   },
 
   // ---- ADD-ON PRICING ENGINE ----
@@ -540,7 +562,7 @@ function calculateSavingsProjection(score, homeProfile, scoreInputs, packageId, 
   var projScoreHigh = Math.min(99, score + scoreHighTotal);
 
   // Payback period using package subtotal
-  var pkgPrice = getBasePrice(packageId) + addonTotal(packageId, addons, homeProfile.systemCount || 1);
+  var pkgPrice = getBasePrice(packageId, homeProfile.systemCount || 2) + addonTotal(packageId, addons, homeProfile.systemCount || 1);
   var paybackLow  = savingsHighTotal > 0 ? (pkgPrice / savingsHighTotal).toFixed(1) : null;
   var paybackHigh = savingsLowTotal  > 0 ? (pkgPrice / savingsLowTotal).toFixed(1)  : null;
 
@@ -674,7 +696,7 @@ function calculateDualUtilitySavings(score, homeProfile, scoreInputs, packageId,
   var combHigh = elecSavHigh + gasSavHigh;
   var projScoreLow  = Math.min(99, score + scoreLow);
   var projScoreHigh = Math.min(99, score + scoreHigh);
-  var pkgCost = getBasePrice(packageId) + addonTotal(packageId, addons, homeProfile.systemCount || 1);
+  var pkgCost = getBasePrice(packageId, homeProfile.systemCount || 2) + addonTotal(packageId, addons, homeProfile.systemCount || 1);
   var paybackLow  = combHigh > 0 ? (pkgCost / combHigh).toFixed(1) : null;
   var paybackHigh = combLow  > 0 ? (pkgCost / combLow).toFixed(1)  : null;
 
@@ -948,7 +970,26 @@ function payoffYears(months) {
 // ============================================================
 // PACKAGE / ADDON HELPERS
 // ============================================================
-function getBasePrice(pid) { return CONFIG.packages[pid] ? CONFIG.packages[pid].price : 0; }
+// System-count-based package pricing. Falls back to 2 systems when
+// no count is supplied (typical single-family default). For homes
+// beyond the explicitly-priced tier (usually 3 systems), extrapolates
+// with priceIncrement per additional system.
+function getPackagePrice(pkgOrId, systems) {
+  var pkg = typeof pkgOrId === "string" ? CONFIG.packages[pkgOrId] : pkgOrId;
+  if (!pkg) return 0;
+  var n = parseInt(systems, 10) || 2;
+  var table = pkg.priceBySystem || {};
+  if (table[n] != null) return table[n];
+  var baseN = pkg.baseSystems || 3;
+  var basePrice = table[baseN] != null ? table[baseN] : (pkg.price || 0);
+  if (n > baseN) return basePrice + (n - baseN) * (pkg.priceIncrement || 500);
+  // Below the smallest tier: return the smallest defined price
+  var keys = Object.keys(table).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
+  if (keys.length > 0) return table[keys[0]];
+  return pkg.price || 0;
+}
+
+function getBasePrice(pid, systems) { return getPackagePrice(pid, systems); }
 function getIncluded(pid)  { return CONFIG.packages[pid] ? CONFIG.packages[pid].includedAddons : []; }
 function addonIncluded(pid, aid) { return getIncluded(pid).indexOf(aid) > -1; }
 function visibleAddons(hasPool) { return Object.values(CONFIG.addons).filter(function(a) { return !a.poolOnly || hasPool; }); }
@@ -1032,7 +1073,7 @@ function addonTotal(pid, addons, sys) {
     .filter(function(e) { return e[1] && !addonIncluded(pid, e[0]); })
     .reduce(function(s, e) { return s + addonPrice(e[0], sys); }, 0);
 }
-function subtotalPrice(pid, addons, sys) { return getBasePrice(pid) + addonTotal(pid, addons, sys); }
+function subtotalPrice(pid, addons, sys) { return getBasePrice(pid, sys) + addonTotal(pid, addons, sys); }
 
 // ============================================================
 // FREE-FORM ORDER ENGINE
@@ -1043,9 +1084,9 @@ function subtotalPrice(pid, addons, sys) { return getBasePrice(pid) + addonTotal
 // Catalog of everything a rep can add to an order (duct-focused)
 var ORDER_CATALOG = [
   // Packages
-  { id: "pkg_coreSeal",    type: "package", label: "Core Seal Package",              unitPrice: 3000, category: "Packages",  defaultQty: 1 },
-  { id: "pkg_performance", type: "package", label: "Performance Package",            unitPrice: 4198, category: "Packages",  defaultQty: 1 },
-  { id: "pkg_ultimate",    type: "package", label: "Ultimate Package",               unitPrice: 5995, category: "Packages",  defaultQty: 1 },
+  { id: "pkg_coreSeal",    type: "package", label: "Core Seal Package (2-system default)",     unitPrice: 3000, category: "Packages",  defaultQty: 1, note: "1sys $2,250 / 2sys $3,000 / 3sys $3,500 / +$500 per additional" },
+  { id: "pkg_performance", type: "package", label: "Performance Package (2-system default)",   unitPrice: 4000, category: "Packages",  defaultQty: 1, note: "Core Seal + cleaning. 1sys $3,250 / 2sys $4,000 / 3sys $4,500 / +$500" },
+  { id: "pkg_ultimate",    type: "package", label: "Ultimate Package (2-system default)",      unitPrice: 5900, category: "Packages",  defaultQty: 1, note: "Performance + boot sealing + filter/plenum. 1sys $4,550 / 2sys $5,900 / 3sys $6,800 / +$700" },
   // Duct Services (add-on)
   { id: "ao_ductClean",    type: "addon",   label: "Duct Cleaning",                  unitPrice: 799,  category: "Add-Ons",   defaultQty: 1, note: "Adjust qty for multiple systems" },
   { id: "ao_bootSeal",     type: "addon",   label: "Boot Sealing",                   unitPrice: 299,  category: "Add-Ons",   defaultQty: 1, note: "Per system" },
@@ -1437,7 +1478,7 @@ function CoverScreen({ onNext }) {
         </button>
       </div>
       {/* Feature pills */}
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
         {[
           { icon: "bolt",    label: "Lower Energy Bills" },
           { icon: "home",    label: "Consistent Comfort" },
@@ -1451,7 +1492,29 @@ function CoverScreen({ onNext }) {
           );
         })}
       </div>
-      <RepNote say="Introduce yourself and what EG Comfort does." phrase="We fix how the whole system performs, not just the equipment." ask="What made you want to take a closer look today?" />
+
+      {/* The 4% guarantee -- the assessment-first hook */}
+      <div style={{ background: T.accentLight, border: "1.5px solid " + T.accent + "55", borderRadius: T.radius, padding: "20px 22px", marginBottom: 14 }}>
+        <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>The 4% Guarantee</div>
+        <p style={{ fontFamily: T.sans, fontSize: 15, color: T.textPrimary, lineHeight: 1.6, margin: 0, fontWeight: 500 }}>
+          We test your duct system on-site. Current code allows up to <strong>4% leakage</strong> — if yours measures at or under that, we disconnect and leave at no cost. In our experience, most homes measure far above.
+        </p>
+      </div>
+
+      {/* New York Times educational hand-off */}
+      {CONFIG.nytArticle && (
+        <div style={{ background: T.surface, border: "1px solid " + T.border, borderRadius: T.radius, padding: "18px 22px", marginBottom: 4 }}>
+          <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Independent Reporting — {CONFIG.nytArticle.citation}</div>
+          <div style={{ fontFamily: T.sans, fontSize: 14, fontWeight: 700, color: T.textPrimary, marginBottom: 6 }}>{CONFIG.nytArticle.title}</div>
+          <p style={{ fontFamily: T.sans, fontSize: 13, color: T.textSec, lineHeight: 1.6, margin: "0 0 10px" }}>{CONFIG.nytArticle.summary}</p>
+          {CONFIG.nytArticle.url
+            ? <a href={CONFIG.nytArticle.url} target="_blank" rel="noreferrer" style={{ fontFamily: T.sans, fontSize: 13, fontWeight: 700, color: T.accent, textDecoration: "none" }}>Read the article →</a>
+            : <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, fontStyle: "italic" }}>URL not set — paste the article link into CONFIG.nytArticle.url to enable the link.</div>
+          }
+        </div>
+      )}
+
+      <RepNote say="Lead with the assessment and the 4% guarantee. Hand them the NYT article as an independent third-party reference." phrase="Independent reporting -- not our marketing. Take a look at what the Times says about duct leakage." ask="Would it be worth 30 minutes to know exactly where your ducts test?" />
     </Wrap>
   );
 }
@@ -2036,14 +2099,17 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
             var pkgDual = calculateDualUtilitySavings(score, homeProfile, scoreInputs, pkg.id, pkgAddons);
             var includesAeroseal = true; // all packages include duct sealing
 
+            // Dynamic pricing scales with system count
+            var pkgSystemPrice = getPackagePrice(pkg, homeProfile.systemCount || 2);
+
             // Dynamic "why it fits" based on score inputs
             var whyFit;
             if (pkg.id === "coreSeal") {
-              whyFit = "Best starting point for homes where airflow and duct leakage are the primary concern. Addresses the single largest driver of efficiency loss.";
+              whyFit = "The assessment-first entry point: we test your duct leakage on-site. If it doesn't exceed the 4% code threshold, we walk away at no cost. If it does (as it does in most homes we test), we seal it and give you a written before/after report.";
             } else if (pkg.id === "performance") {
-              whyFit = "The highest-leverage option for most homes -- combines duct sealing + boot sealing + duct cleaning for a complete delivery-system restoration. Typically delivers the strongest savings-per-dollar of any single investment, which is why it is the most cost-effective starting point we offer.";
+              whyFit = "Core Seal + full duct cleaning for an additional $1,000. Best fit when there's visible dust in the system, pets, recent renovations, or the ducts have never been serviced -- cleaning also helps the sealant bond better.";
             } else {
-              whyFit = "The complete duct system overhaul -- everything in Performance plus a 4-inch filter/plenum upgrade, an advanced pressure verification report, and a 12-month comfort follow-up. Best fit when the customer wants the fullest possible restoration in one visit.";
+              whyFit = "The complete duct restoration: everything in Performance, plus boot sealing at every register and a 4-inch filter/plenum upgrade. Best when the goal is a full one-visit overhaul of the delivery system.";
             }
 
             return (
@@ -2063,8 +2129,9 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                     <div style={{ fontFamily: T.sans, fontSize: 17, fontWeight: 800, color: T.textPrimary }}>{pkg.name}</div>
                   </div>
                   <div style={{ textAlign: "right", flexShrink: 0 }}>
-                    <div style={{ fontFamily: T.sans, fontSize: 26, fontWeight: 800, color: isSelected ? T.accent : T.textPrimary }}>{fmt(pkg.price)}</div>
-                    {isSelected && <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.07em" }}>Selected</div>}
+                    <div style={{ fontFamily: T.sans, fontSize: 26, fontWeight: 800, color: isSelected ? T.accent : T.textPrimary }}>{fmt(pkgSystemPrice)}</div>
+                    <div style={{ fontFamily: T.sans, fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em" }}>for {homeProfile.systemCount || 2} system{(homeProfile.systemCount || 2) > 1 ? "s" : ""}</div>
+                    {isSelected && <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.accent, textTransform: "uppercase", letterSpacing: "0.07em", marginTop: 3 }}>Selected</div>}
                   </div>
                 </div>
 
@@ -2103,11 +2170,11 @@ function EfficiencyScoreScreen({ scoreInputs, setScoreInputs, homeProfile, setHo
                 </div>
 
                 {(function() {
-                  if (!(pkgDual.combLow > 0) || !(pkg.price > 0)) return null;
+                  if (!(pkgDual.combLow > 0) || !(pkgSystemPrice > 0)) return null;
                   var scenarios = buildEngineScenarios(pkgDual.combLow, pkgDual.combHigh);
                   if (scenarios.length === 0) return null;
                   var expected = scenarios[1]; // midpoint
-                  var mo = payoffMonths(pkg.price, expected.mo);
+                  var mo = payoffMonths(pkgSystemPrice, expected.mo);
                   var yr = payoffYears(mo);
                   return (
                     <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted }}>
@@ -2795,23 +2862,26 @@ function SolutionScreen() {
 // ============================================================
 // SCREEN 10 -- Packages
 // ============================================================
-function PackagesScreen({ selectedPackageId, setSelectedPackageId }) {
+function PackagesScreen({ selectedPackageId, setSelectedPackageId, homeProfile }) {
   var pkgs = Object.values(CONFIG.packages);
+  var sysCount = (homeProfile && homeProfile.systemCount) || 2;
   return (
     <Wrap>
-      <SecTitle children="Choose the Right Package" sub="Select the option that fits this home. Add-ons are on the next screen." />
+      <SecTitle children="Choose the Right Package" sub={"Prices shown for a " + sysCount + "-system home. All packages include the assessment-first guarantee: if we don't measure leakage over the 4% code threshold, we walk away at no cost."} />
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 16, alignItems: "start" }}>
         {pkgs.map(function(pkg) {
           var sel = selectedPackageId === pkg.id;
           var isMid = pkg.id === "performance";
+          var pkgSystemPrice = getPackagePrice(pkg, sysCount);
           return (
             <div key={pkg.id} onClick={function() { setSelectedPackageId(pkg.id); }} style={{ background: isMid ? "#1E2832" : T.surface, border: "2px solid " + (sel ? T.positive : isMid ? T.accentMid : T.surfaceBorder), borderRadius: T.radius, padding: isMid ? "32px 24px" : "26px 22px", cursor: "pointer", transition: "all 0.18s", boxShadow: isMid ? "0 8px 32px rgba(39,209,127,0.12), 0 2px 12px rgba(0,0,0,0.4)" : sel ? T.shadowGlow : T.shadow, transform: isMid ? "scale(1.03)" : "scale(1)" }}>
               {pkg.badge && <div style={{ marginBottom: 14 }}><Bdg variant={isMid ? "gold" : "muted"}>{pkg.badge}</Bdg></div>}
               <div style={{ fontFamily: T.sans, fontSize: 11, color: isMid ? "rgba(255,255,255,0.55)" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>{pkg.name}</div>
-              <div style={{ fontFamily: T.font, fontSize: 32, fontWeight: 700, color: isMid ? T.white : sel ? T.positive : T.textPrimary, marginBottom: 18 }}>{fmt(pkg.price)}</div>
+              <div style={{ fontFamily: T.font, fontSize: 32, fontWeight: 700, color: isMid ? T.white : sel ? T.positive : T.textPrimary, marginBottom: 4 }}>{fmt(pkgSystemPrice)}</div>
+              <div style={{ fontFamily: T.sans, fontSize: 10, color: isMid ? "rgba(255,255,255,0.5)" : T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 18 }}>for {sysCount} system{sysCount > 1 ? "s" : ""}</div>
               <div style={{ borderTop: "1px solid " + T.surfaceBorder, paddingTop: 14 }}>
                 {pkg.includes.map(function(item) {
-                  return <div key={item} style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 9 }}><span style={{ color: isMid ? T.accentMid : T.accent, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>+</span><span style={{ fontFamily: T.sans, fontSize: 12, color: T.textSec, lineHeight: 1.5 }}>{item}</span></div>;
+                  return <div key={item} style={{ display: "flex", alignItems: "flex-start", gap: 7, marginBottom: 9 }}><span style={{ color: isMid ? T.accentMid : T.accent, fontWeight: 700, flexShrink: 0, marginTop: 1 }}>+</span><span style={{ fontFamily: T.sans, fontSize: 12, color: isMid ? "rgba(255,255,255,0.75)" : T.textSec, lineHeight: 1.5 }}>{item}</span></div>;
                 })}
               </div>
               {sel && <div style={{ marginTop: 16, background: T.positiveD, borderRadius: T.radiusSm, padding: "9px", textAlign: "center", fontFamily: T.sans, fontSize: 12, fontWeight: 700, color: T.positive }}>Selected</div>}
@@ -2819,8 +2889,27 @@ function PackagesScreen({ selectedPackageId, setSelectedPackageId }) {
           );
         })}
       </div>
+
+      {/* Systems-count pricing reference */}
+      <div style={{ marginTop: 22, background: T.surfaceHigh, border: "1px solid " + T.border, borderRadius: T.radius, padding: "16px 20px" }}>
+        <div style={{ fontFamily: T.sans, fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 10 }}>Pricing Reference (varies by system count)</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, fontFamily: T.sans, fontSize: 12 }}>
+          <div style={{ fontWeight: 700, color: T.textPrimary }}>&nbsp;</div>
+          <div style={{ fontWeight: 700, color: T.textSec, textAlign: "center" }}>Core Seal</div>
+          <div style={{ fontWeight: 700, color: T.textSec, textAlign: "center" }}>Performance</div>
+          <div style={{ fontWeight: 700, color: T.textSec, textAlign: "center" }}>Ultimate</div>
+          {[1, 2, 3, 4].map(function(n) { return [
+            <div key={"l"+n} style={{ color: T.textSec }}>{n} system{n > 1 ? "s" : ""}</div>,
+            <div key={"c"+n} style={{ textAlign: "center", color: T.textPrimary }}>{fmt(getPackagePrice("coreSeal", n))}</div>,
+            <div key={"p"+n} style={{ textAlign: "center", color: T.textPrimary }}>{fmt(getPackagePrice("performance", n))}</div>,
+            <div key={"u"+n} style={{ textAlign: "center", color: T.textPrimary }}>{fmt(getPackagePrice("ultimate", n))}</div>,
+          ]; })}
+        </div>
+        <div style={{ fontFamily: T.sans, fontSize: 11, color: T.textMuted, marginTop: 10 }}>Each system beyond 3 adds $500 to Core Seal / Performance and $700 to Ultimate.</div>
+      </div>
+
       <AerosealModule packageId={selectedPackageId} context="package" />
-      <RepNote say="Present all three tiers. For a 2-system home, $3,000 is a natural anchor." phrase="Most homeowners with two systems land in the Performance package." ask="Does one of these feel like the right fit?" />
+      <RepNote say="Lead with the assessment and the 4% guarantee. The price is upfront, the risk is on us." phrase="If your ducts test tighter than 4% -- current code -- we walk away, no charge. In our experience that's rare." ask="Does the assessment-first approach feel fair?" />
     </Wrap>
   );
 }
@@ -3157,8 +3246,8 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
     var items = [];
     if (pkg) {
       items.push({
-        label:     pkg.name,
-        unitPrice: pkg.price,
+        label:     pkg.name + " (" + sys + " system" + (sys > 1 ? "s" : "") + ")",
+        unitPrice: getPackagePrice(pkg, sys),
         qty:       1,
         note:      "Includes: " + pkg.includes.join("; "),
       });
@@ -3265,7 +3354,8 @@ function CloseScreen({ selectedPackageId, addons, homeProfile, subtotal, selecte
           <Card>
             <div style={{ fontFamily: T.sans, fontSize: 12, color: T.textMuted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Package</div>
             <div style={{ fontFamily: T.font, fontSize: 20, fontWeight: 700, color: T.dark, marginBottom: 3 }}>{pkg ? pkg.name : ""}</div>
-            <div style={{ fontFamily: T.font, fontSize: 24, fontWeight: 700, color: T.accent, marginBottom: 14 }}>{fmt(pkg ? pkg.price : 0)}</div>
+            <div style={{ fontFamily: T.font, fontSize: 24, fontWeight: 700, color: T.accent, marginBottom: 4 }}>{fmt(pkg ? getPackagePrice(pkg, sys) : 0)}</div>
+            <div style={{ fontFamily: T.sans, fontSize: 11, color: T.muted, textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 14 }}>for {sys} system{sys > 1 ? "s" : ""}</div>
             <div style={{ paddingTop: 14, borderTop: "1px solid " + T.border }}>
               {pkg && pkg.includes.map(function(item) {
                 return <div key={item} style={{ display: "flex", gap: 7, marginBottom: 7, fontFamily: T.sans, fontSize: 12, color: T.mid }}><span style={{ color: T.accent, flexShrink: 0 }}>+</span>{item}</div>;
@@ -3678,7 +3768,7 @@ export default function App() {
     { label: "Problem",    c: <ProblemScreen /> },
     { label: "Impact",     c: <ImpactScreen homeProfile={homeProfile} /> },
     { label: "Solution",   c: <SolutionScreen /> },
-    { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} /> },
+    { label: "Packages",   c: <PackagesScreen selectedPackageId={selectedPackageId} setSelectedPackageId={setSelectedPackageId} homeProfile={homeProfile} /> },
     { label: "Add-Ons",    c: <AddonsScreen selectedPackageId={selectedPackageId} addons={addons} setAddons={setAddons} homeProfile={homeProfile} addonConfigs={addonConfigs} setAddonConfigs={setAddonConfigs} scoreInputs={scoreInputs} /> },
     { label: "Order",      c: <OrderBuilderScreen orderItems={orderItems} setOrderItems={setOrderItems} selectedTermId={selectedTermId} /> },
     { label: "Financing",  c: <FinancingScreen subtotal={sub} selectedTermId={selectedTermId} setSelectedTermId={setSelectedTermId} homeProfile={homeProfile} scoreInputs={scoreInputs} selectedPackageId={selectedPackageId} addons={addons} /> },
